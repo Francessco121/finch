@@ -332,7 +332,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
 
   sb.writeln('return ${element.name}(${ctorArgs.join(', ')},);');
 
-  sb.writeln('});');
+  sb.writeln('}, fn.elementUpgraded);');
 
   if (hookedFunctions.any((f) => !f.isStatic) || 
       hookedProperties.any((f) => !f.isStatic) || 
@@ -357,8 +357,9 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     sb.writeln('js.setProperty(ctor, \'observedAttributes\', $list);');
   }
 
-  // Define custom element
+  // Define custom element and register component
   sb.writeln('web.window.customElements.define(\'${component.tag}\', ctor);');
+  sb.writeln('fn.registerComponent(${element.name}, \'${component.tag}\');');
 
   // Emit define method
   context.functions.add((MethodBuilder()

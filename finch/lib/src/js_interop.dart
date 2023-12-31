@@ -10,13 +10,16 @@ final _htmlReflect = util.getProperty(window, 'Reflect');
 final _htmlObject = util.getProperty(window, 'Object');
 
 typedef DartInstanceConstructor = Object Function(HTMLElement element);
+typedef DartInstanceAttachedCallback = void Function(HTMLElement element, Object instance);
 
 /// Creates a JavaScript class that extends from HTMLElement that can be used
 /// as a custom element with an associated Dart class.
 ///
 /// The Dart class instance returned from the given [constructor] will be attached
-/// to all JavaScript class instances as the DOM property `__#dartInstance`.
-JSFunction createCustomElementClass(DartInstanceConstructor constructor) {
+/// to all JavaScript class instances as the DOM property `__#dartInstance`. After the
+/// instance is attached, [attachedCallback] will be invoked.
+JSFunction createCustomElementClass(DartInstanceConstructor constructor, 
+    DartInstanceAttachedCallback attachedCallback) {
   // Constructor for the underlying JavaScript class
   //
   // We can't extend HTMLElement with a Dart class, so instead we'll instantiate
@@ -31,6 +34,8 @@ JSFunction createCustomElementClass(DartInstanceConstructor constructor) {
     // Construct the Dart class and attach via a property
     final dartInst = constructor(element);
     util.setProperty(element, '__#dartInstance', dartInst);
+
+    attachedCallback(element, dartInst);
 
     return element;
   }

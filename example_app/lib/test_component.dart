@@ -6,6 +6,7 @@ import 'package:web/web.dart' hide Client;
   tag: 'test-component',
   template: '''
     <p>Hello World!</p>
+    <child-component></child-component>
   ''',
   style: '''
     p {
@@ -30,7 +31,8 @@ class TestComponent extends FormComponent<int> implements OnConnected, OnFormAss
 
   final Client _client;
 
-  TestComponent(this._client, super._element, super._internals);
+  TestComponent(this._client, HTMLElement element, ElementInternals internals) 
+      : super(element, internals);
 
   void dartFunction(String message) {
     print(message);
