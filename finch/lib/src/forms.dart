@@ -11,6 +11,9 @@ import 'package:web/web.dart';
 /// 
 /// Components that implement or extend this class can access their [ElementInternals] by
 /// including it as a constructor parameter.
+/// 
+/// Form-associated lifecycle callbacks can be implemented through the interfaces: [OnFormAssociated],
+/// [OnFormDisabled], [OnFormReset], and [OnFormStateRestore].
 abstract class FormComponent<T> {
   final HTMLElement _element;
   final ElementInternals _internals;
@@ -67,21 +70,29 @@ abstract class FormComponent<T> {
   }
 }
 
+/// When implemented by a Finch component, hooks the form-associated custom element 
+/// `formAssociatedCallback` lifecycle callback.
 abstract interface class OnFormAssociated {
   /// Called when the element associates with or disassociates from a form element.
   void onFormAssociated(HTMLFormElement? form);
 }
 
+/// When implemented by a Finch component, hooks the form-associated custom element 
+/// `formDisabledCallback` lifecycle callback.
 abstract interface class OnFormDisabled {
   /// Called when the disabled state of the element changes.
   void onFormDisabled(bool disabled);
 }
 
+/// When implemented by a Finch component, hooks the form-associated custom element 
+/// `formResetCallback` lifecycle callback.
 abstract interface class OnFormReset {
   /// Called when the associated form is reset.
   void onFormReset();
 }
 
+/// When implemented by a Finch component, hooks the form-associated custom element 
+/// `formStateRestoreCallback` lifecycle callback.
 abstract interface class OnFormStateRestore {
   /// Called when the element's state should be restored ([mode] = "restore") or after a 
   /// form-filling assist feature was invoked on the element ([mode] = "autocomplete").

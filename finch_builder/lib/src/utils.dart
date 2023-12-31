@@ -1,6 +1,6 @@
 import 'package:build/build.dart';
 
-/// Combines a type name with the import as prefix of its declaring library.
+/// Combines a type name with the "import as" prefix of its declaring library.
 class PrefixedType {
   final String type;
   final String prefix;

@@ -1,5 +1,6 @@
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:source_gen/source_gen.dart';
 
@@ -107,29 +108,7 @@ String _buildProviderInstanceConstructorForClass(DartType type, BuilderContext c
   final prefix = context.addPrefixedImportFor(type.element!);
   final prefixedType = PrefixedType(type.element!.name!, prefix);
 
-  final sb = StringBuffer();
-  sb.write('(c) => $prefixedType(');
-
-  bool first = true;
-  for (final param in ctor.parameters) {
-    if (!first) {
-      sb.write(', ');
-    }
-    first = false;
-    
-    final paramPrefix = context.addPrefixedImportFor(param.type.element!);
-    final paramPrefixedType = PrefixedType(param.type.element!.name!, paramPrefix);
-
-    if (param.isNamed) {
-      sb.write('${param.name}: ');
-    }
-
-    sb.write('c.resolve<$paramPrefixedType>()');
-  }
-
-  sb.write(')');
-
-  return sb.toString();
+  return _buildProviderInstanceConstructor(prefixedType.toString(), ctor.parameters, context);
 }
 
 String _buildProviderInstanceConstructorForFactory(ExecutableElement factory, BuilderContext context) {
@@ -145,24 +124,36 @@ String _buildProviderInstanceConstructorForFactory(ExecutableElement factory, Bu
     prefixedFactory = PrefixedType(factory.name, prefix);
   }
 
+  return _buildProviderInstanceConstructor(prefixedFactory.toString(), factory.parameters, context);
+}
+
+String _buildProviderInstanceConstructor(String qualifiedConstructorName, 
+    List<ParameterElement> parameters, BuilderContext context) {
   final sb = StringBuffer();
-  sb.write('(c) => $prefixedFactory(');
+  sb.write('(c) => $qualifiedConstructorName(');
 
   bool first = true;
-  for (final param in factory.parameters) {
+  for (final param in parameters) {
     if (!first) {
       sb.write(', ');
     }
     first = false;
-    
-    final paramPrefix = context.addPrefixedImportFor(param.type.element!);
-    final paramPrefixedType = PrefixedType(param.type.element!.name!, paramPrefix);
 
-    if (param.isNamed) {
-      sb.write('${param.name}: ');
+    if ($ProviderCollection.isExactlyType(param.type)) {
+      sb.write('c');
+    } else {
+      final paramPrefix = context.addPrefixedImportFor(param.type.element!);
+      final paramPrefixedType = PrefixedType(param.type.element!.name!, paramPrefix);
+      final method = param.type.nullabilitySuffix == NullabilitySuffix.question 
+          ? 'resolveOrNull' 
+          : 'resolve';
+
+      if (param.isNamed) {
+        sb.write('${param.name}: ');
+      }
+
+      sb.write('c.$method<$paramPrefixedType>()');
     }
-
-    sb.write('c.resolve<$paramPrefixedType>()');
   }
 
   sb.write(')');

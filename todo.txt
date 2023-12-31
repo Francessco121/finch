@@ -1,0 +1,6 @@
+- allow multiple @Export and @Observe attributes on the same element
+- allow multiple stylesheets on a single component
+- allow @Component to configure how the shadow dom is initialized
+- component inheritance
+- Angular's @HostBinding and @HostListener annotations? (probably out of scope of the project)
+- Investigate supporting https://github.com/lume/element-behaviors as a way of getting Angular's directive feature back in some form

@@ -20,7 +20,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     throw FinchBuilderException('Cannot specify both a template and template URL.', element);
   }
 
-  // TODO: this restriction could be lifted
   if (component.style != null && component.styleUrl != null) {
     throw FinchBuilderException('Cannot specify both a style and style URL.', element);
   }
@@ -35,13 +34,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     context.fields.add(styleField);
   }
 
-  // Start building the component class
-  final $class = ClassBuilder()
-      ..name = '_\$${element.name}Component'
-      ..extend = Reference(element.name);
-
-  final ctor = ConstructorBuilder();
-
   if (element.unnamedConstructor == null) {
     throw FinchBuilderException(
       'Component ${element.name} must either have no constructors or declare an unnamed constructor.', 
@@ -49,21 +41,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   }
 
   final ctorParams = element.unnamedConstructor!.parameters;
-
-  for (final param in element.unnamedConstructor!.parameters) {
-    if (param.isNamed) {
-      throw FinchBuilderException(
-        'Component ${element.name}\'s unnamed constructor must not declare named parameters.', 
-        element.unnamedConstructor);
-    }
-
-    ctor.requiredParameters.add((ParameterBuilder()
-          ..name = param.name
-          ..toSuper = true)
-        .build());
-  }
-
-  $class.constructors.add(ctor.build());
 
   // Track export names that are reserved due to things like implementing lifecycle interfaces
   // The key is the export name and the value is a string explaining why it's reserved
@@ -160,8 +137,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   final exportedFunctions = <ExportedFunction>{};
   final exportedProperties = <String, ExportedProperty>{};
 
-  // TODO: support multiple export annotations on the same element and only allow a single observe annotation
-
   for (final child in element.children) {
     final observe = $Observe.firstAnnotationOfExact(child);
     final export = $Export.firstAnnotationOfExact(child);
@@ -252,18 +227,18 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     }
   }
 
+  // Disallow exporting attributeChangedCallback if @Observe is used since we'll
+  // be generating a custom hook for it
   if (observedAttributes.isNotEmpty) {
-    // Handle observed attributes 
-    hookedFunctions.add(HookedFunction(
-        'attributeChangedCallback', 
-        const ['name', 'oldValue', 'newValue', 'namespace'], 
-        r'$onAttributeChanged',
-        const ['name', 'oldValue', 'newValue']));
-    reservedExports[r'$onAttributeChanged'] = '@Observe field(s)/setter(s)';
-  } else if (hasOnAttributeChanged) {
+    reservedExports['attributeChangedCallback'] = '@Observe field(s)/setter(s)';
+  }
+
+  if (hasOnAttributeChanged && observedAttributes.isEmpty) {
     // Component doesn't observe any attributes but defines a callback,
     // just hook attributeChangedCallback directly up and issue a build warning
-    log.warning('Component ${element.displayName} implements OnAttributeChanged but doesn\'t declare any @Observe fields/setters. The callback will never be invoked.');
+    log.warning(
+      'Component ${element.displayName} implements OnAttributeChanged but doesn\'t '
+      'declare any @Observe fields/setters. The callback will never be invoked.');
     hookedFunctions.add(HookedFunction(
         'attributeChangedCallback', 
         const ['name', 'oldValue', 'newValue', 'namespace'], 
@@ -302,54 +277,37 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   hookedFunctions.addAll(exportedFunctions);
   hookedProperties.addAll(exportedProperties.values);
 
-  // Build special $onAttributeChanged method
-  if (observedAttributes.isNotEmpty) {
-    $class.methods.add((MethodBuilder()
-          ..name = r'$onAttributeChanged'
-          ..returns = Reference('void')
-          ..requiredParameters.addAll([
-            (ParameterBuilder()..type = Reference('String')..name = 'name').build(),
-            (ParameterBuilder()..type = Reference('dynamic')..name = 'oldValue').build(),
-            (ParameterBuilder()..type = Reference('dynamic')..name = 'newValue').build(),
-          ])
-          ..body = Code(_buildOnAttributeChangedHandler(observedAttributes, hasOnAttributeChanged)))
-        .build());
-  }
-
   // Start building define method
-  final defineSb = StringBuffer();
+  final sb = StringBuffer();
 
   // Generate provider collection creation
-  defineSb.writeln('fn.ProviderCollection ourProviders = providers ?? fn.ProviderCollection.empty();');
+  sb.writeln('final ourProviders = providers ?? fn.ProviderCollection.empty();');
 
   // Generate element class creation
-  defineSb.writeln('final ctor = fn.createCustomElementClass((element) {');
+  sb.writeln('final ctor = fn.createCustomElementClass((element) {');
   
-  bool needShadowVar = ctorParams.any((p) => 
-          $HTMLElement.isAssignableFromType(p.type) || 
-          $ShadowRoot.isExactlyType(p.type)) ||
+  if (ctorParams.any((p) => $ShadowRoot.isExactlyType(p.type)) ||
       templateField != null ||
-      styleField != null;
-
-  if (needShadowVar) {
-    defineSb.write('final shadow = ');
+      styleField != null) {
+    sb.write('final shadow = ');
   }
-  defineSb.writeln('element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
+  sb.writeln('element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
 
   if (styleField != null) {
-    defineSb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
+    sb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
   }
 
   if (templateField != null) {
-    defineSb.writeln('shadow.appendChild(${templateField.name}.content.cloneNode(true));');
+    sb.writeln('shadow.appendChild(${templateField.name}.content.cloneNode(true));');
   }
 
-  if (isFormComponent) {
-    if (ctorParams.any((p) => $ElementInternals.isExactlyType(p.type))) {
-      defineSb.write('final internals = ');
+  final hasElementInternalsParam = ctorParams.any((p) => $ElementInternals.isExactlyType(p.type));
+  if (isFormComponent || hasElementInternalsParam) {
+    if (hasElementInternalsParam) {
+      sb.write('final internals = ');
     }
 
-    defineSb.writeln('element.attachInternals();');
+    sb.writeln('element.attachInternals();');
   }
 
   final ctorArgs = ctorParams.map((param) {
@@ -357,42 +315,52 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
       return 'element';
     } else if ($ShadowRoot.isExactlyType(param.type)) {
       return 'shadow';
-    } else if ($ElementInternals.isExactlyType(param.type) && isFormComponent) {
+    } else if ($ElementInternals.isExactlyType(param.type)) {
       return 'internals';
+    } else if ($ProviderCollection.isExactlyType(param.type)) {
+      return 'ourProviders';
     } else {
       final prefix = context.addPrefixedImportFor(param.type.element!);
       final prefixedType = PrefixedType(param.type.element!.name!, prefix);
-      return 'ourProviders.resolve<$prefixedType>()';
+      final method = param.type.nullabilitySuffix == NullabilitySuffix.question 
+          ? 'resolveOrNull' 
+          : 'resolve';
+      
+      return 'ourProviders.$method<$prefixedType>()';
     }
   });
 
-  defineSb.writeln('return ${$class.name}(${ctorArgs.join(', ')},);');
+  sb.writeln('return ${element.name}(${ctorArgs.join(', ')},);');
 
-  defineSb.writeln('});');
+  sb.writeln('});');
 
   if (hookedFunctions.any((f) => !f.isStatic) || 
       hookedProperties.any((f) => !f.isStatic) || 
       observedAttributes.isNotEmpty) {
-    defineSb.writeln('final proto = js.getProperty(ctor, \'prototype\');');
+    sb.writeln('final proto = js.getProperty(ctor, \'prototype\');');
   }
 
-  _hookFunctions(hookedFunctions, element.name, $class.name!, defineSb);
-  _hookProperties(hookedProperties, element.name, $class.name!, defineSb);
+  if (observedAttributes.isNotEmpty) {
+    _hookObservedAttributes(observedAttributes, hasOnAttributeChanged, element.name, sb);
+  }
+
+  _hookFunctions(hookedFunctions, element.name, sb);
+  _hookProperties(hookedProperties, element.name, sb);
 
   if (isFormComponent) {
-    defineSb.writeln('js.setProperty(ctor, \'formAssociated\', true);');
+    sb.writeln('js.setProperty(ctor, \'formAssociated\', true);');
   }
 
   if (observedAttributes.isNotEmpty) {
     final list = literalConstList(observedAttributes.map((a) => a.attr).toList())
         .accept(context.emitter);
-    defineSb.writeln('js.setProperty(ctor, \'observedAttributes\', $list);');
+    sb.writeln('js.setProperty(ctor, \'observedAttributes\', $list);');
   }
 
-  // Finish define method
-  defineSb.writeln('web.window.customElements.define(\'${component.tag}\', ctor);');
+  // Define custom element
+  sb.writeln('web.window.customElements.define(\'${component.tag}\', ctor);');
 
-  // Done
+  // Emit define method
   context.functions.add((MethodBuilder()
         ..name = 'define${element.name}'
         ..returns = Reference('void')
@@ -400,53 +368,9 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
               ..name = 'providers'
               ..type = Reference('fn.ProviderCollection?'))
             .build())
-        ..body = Code(defineSb.toString())
+        ..body = Code(sb.toString())
         ..docs.add('/// Defines the component [${element.name}] as the custom element `${component.tag}`.'))
       .build());
-
-  context.classes.add($class.build());
-}
-
-String _buildOnAttributeChangedHandler(List<ObservedAttribute> attributes, bool callSuper) {
-  final sb = StringBuffer();
-
-  sb.writeln('switch (name) {');
-
-  for (final attr in attributes) {
-    sb.writeln('case \'${attr.attr}\':');
-
-    if (attr.type is DynamicType) {
-      sb.writeln('super.${attr.field} = newValue;');
-    } else if ($bool.isExactlyType(attr.type)) {
-      sb.writeln('super.${attr.field} = newValue != null;');
-    } else {
-      if (attr.type.nullabilitySuffix != NullabilitySuffix.question) {
-        _throwAttributeTypeException(attr.element);
-      }
-      
-      if ($Object.isExactlyType(attr.type) || 
-          $String.isExactlyType(attr.type) || 
-          $Pattern.isExactlyType(attr.type)) {
-        sb.writeln('super.${attr.field} = newValue;');
-      } else if ($num.isExactlyType(attr.type)) {
-        sb.writeln('super.${attr.field} = newValue == null ? null : num.tryParse(newValue);');
-      } else if ($int.isExactlyType(attr.type)) {
-        sb.writeln('super.${attr.field} = newValue == null ? null : int.tryParse(newValue);');
-      } else if ($double.isExactlyType(attr.type)) {
-        sb.writeln('super.${attr.field} = newValue == null ? null : double.tryParse(newValue);');
-      } else {
-        _throwAttributeTypeException(attr.element);
-      }
-    }
-  }
-
-  sb.writeln('}');
-
-  if (callSuper) {
-    sb.writeln('super.onAttributeChanged(name, oldValue, newValue);');
-  }
-
-  return sb.toString();
 }
 
 Never _throwAttributeTypeException(Element element) {
@@ -455,7 +379,52 @@ Never _throwAttributeTypeException(Element element) {
       element);
 }
 
-void _hookFunctions(List<HookedFunction> functions, String className, String subClassName, StringBuffer sb) {
+void _hookObservedAttributes(List<ObservedAttribute> attributes, bool callComponentCallback, String className, StringBuffer sb) {
+  sb.writeln(
+    'js.setProperty(proto, \'attributeChangedCallback\', js.allowInteropCaptureThis('
+    '(web.HTMLElement self, String name, oldValue, newValue, namespace) {');
+  sb.writeln('final component = self.component<$className>();');
+
+  sb.writeln('switch (name) {');
+
+  for (final attr in attributes) {
+    sb.writeln('case \'${attr.attr.replaceAll('\'', '\\\'')}\':');
+
+    if (attr.type is DynamicType) {
+      sb.writeln('component.${attr.field} = newValue;');
+    } else if ($bool.isExactlyType(attr.type)) {
+      sb.writeln('component.${attr.field} = newValue != null;');
+    } else {
+      if (attr.type.nullabilitySuffix != NullabilitySuffix.question) {
+        _throwAttributeTypeException(attr.element);
+      }
+      
+      if ($Object.isExactlyType(attr.type) || 
+          $String.isExactlyType(attr.type) || 
+          $Pattern.isExactlyType(attr.type)) {
+        sb.writeln('component.${attr.field} = newValue;');
+      } else if ($num.isExactlyType(attr.type)) {
+        sb.writeln('component.${attr.field} = newValue == null ? null : num.tryParse(newValue);');
+      } else if ($int.isExactlyType(attr.type)) {
+        sb.writeln('component.${attr.field} = newValue == null ? null : int.tryParse(newValue);');
+      } else if ($double.isExactlyType(attr.type)) {
+        sb.writeln('component.${attr.field} = newValue == null ? null : double.tryParse(newValue);');
+      } else {
+        _throwAttributeTypeException(attr.element);
+      }
+    }
+  }
+
+  sb.writeln('}');
+
+  if (callComponentCallback) {
+    sb.writeln('component.onAttributeChanged(name, oldValue, newValue);');
+  }
+
+  sb.writeln('}));');
+}
+
+void _hookFunctions(List<HookedFunction> functions, String className, StringBuffer sb) {
   for (final func in functions) {
     if (func.isStatic) {
       sb.write('js.setProperty(ctor, \'${func.from}\', js.allowInterop((${func.fromParameters.join(', ')}) {');
@@ -472,7 +441,7 @@ void _hookFunctions(List<HookedFunction> functions, String className, String sub
       }
       sb.writeln(') {');
 
-      sb.write('self.component<$subClassName>().${func.to ?? func.from}(');
+      sb.write('self.component<$className>().${func.to ?? func.from}(');
       sb.write((func.toParameters ?? func.fromParameters).join(', '));
       sb.writeln(');');
 
@@ -481,7 +450,7 @@ void _hookFunctions(List<HookedFunction> functions, String className, String sub
   }
 }
 
-void _hookProperties(Iterable<HookedProperty> props,  String className, String subClassName, StringBuffer sb) {
+void _hookProperties(Iterable<HookedProperty> props, String className, StringBuffer sb) {
   for (final field in props) {
     if (!field.isGetter && !field.isSetter) {
       // Shouldn't happen but just in case...
@@ -507,7 +476,7 @@ void _hookProperties(Iterable<HookedProperty> props,  String className, String s
       sb.writeln('fn.definePropertyCaptureThis(proto, \'${field.from}\', ');
       if (field.isGetter) {
         sb.writeln('getter: (web.HTMLElement self) {');
-        sb.writeln('return self.component<$subClassName>().${field.to ?? field.from};');
+        sb.writeln('return self.component<$className>().${field.to ?? field.from};');
         sb.writeln('}');
       }
       if (field.isSetter) {
@@ -515,7 +484,7 @@ void _hookProperties(Iterable<HookedProperty> props,  String className, String s
           sb.write(',');
         }
         sb.writeln('setter: (web.HTMLElement self, value) {');
-        sb.writeln('self.component<$subClassName>().${field.to ?? field.from} = value;');
+        sb.writeln('self.component<$className>().${field.to ?? field.from} = value;');
         sb.writeln('}');
       }
     }

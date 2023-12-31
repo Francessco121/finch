@@ -41,6 +41,7 @@ const $Provider = TypeChecker.fromUrl('$_finchProvider#Provider');
 const $InstanceProvider = TypeChecker.fromUrl('$_finchProvider#InstanceProvider');
 const $ClassProvider = TypeChecker.fromUrl('$_finchProvider#ClassProvider');
 const $FactoryProvider = TypeChecker.fromUrl('$_finchProvider#FactoryProvider');
+const $ProviderCollection = TypeChecker.fromUrl('$_finchProvider#ProviderCollection');
 
 // package:web
 const $HTMLElement = TypeChecker.fromUrl('$_webHtml#HTMLElement');

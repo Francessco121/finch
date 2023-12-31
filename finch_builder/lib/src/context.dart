@@ -25,11 +25,20 @@ class BuilderContext {
   }
   
   String addPrefixedImportFor(Element element) {
-    final elementLibraryImport = getPackageImport(element.library!.identifier);
+    final identifier = element.library!.identifier;
+    if (identifier == 'dart:core') {
+      return '';
+    }
+
+    final isPackageType = !identifier.startsWith('dart:');
+
+    final elementLibraryImport = isPackageType
+        ? getPackageImport(identifier)
+        : identifier;
 
     String? prefix = _existingImports[elementLibraryImport];
     if (prefix != null) {
-      if (prefix.isEmpty) {
+      if (prefix.isEmpty && isPackageType) {
         showFromSelfImport.add(element.name!);
       }
 

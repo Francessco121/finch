@@ -28,7 +28,10 @@ class FinchBuilder extends sg.Generator {
     }
 
     // Set up code emitter
-    final emitter = DartEmitter(allocator: Allocator());
+    final emitter = DartEmitter(
+        allocator: Allocator(),
+        orderDirectives: true,
+        useNullSafetySyntax: true);
 
     // Set up context for generators
     final ctx = BuilderContext(library.element, buildStep, emitter);
@@ -40,10 +43,6 @@ class FinchBuilder extends sg.Generator {
 
       if (element is! ClassElement) {
         throw FinchBuilderException('Only classes may be annotated with @Component.', element);
-      }
-
-      if (element.isBase || element.isFinal || element.isSealed) {
-        throw FinchBuilderException('Component classes cannot be base, final, or sealed.', element);
       }
 
       final component = Component.fromReader(annotation);
