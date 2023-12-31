@@ -4,8 +4,6 @@ import 'package:js/js.dart' as js;
 import 'package:js/js_util.dart' as util;
 import 'package:web/web.dart';
 
-export 'src/extensions.dart';
-
 // TODO: replace with staticInterop?
 final _htmlElement = util.getProperty(window, 'HTMLElement');
 final _htmlReflect = util.getProperty(window, 'Reflect');
@@ -66,9 +64,9 @@ void defineProperty(Object obj, String name,
 /// Calls `Object.defineProperty` on the given JavaScript [obj].
 /// 
 /// The `this` variable is passed to the first argument of the getter/setter.
-void definePropertyCaptureThis(Object obj, String name,
-    {dynamic Function(Element self)? getter,
-    dynamic Function(Element self, dynamic value)? setter}) {
+void definePropertyCaptureThis<T>(Object obj, String name,
+    {dynamic Function(T self)? getter,
+    dynamic Function(T self, dynamic value)? setter}) {
   util.callMethod(_htmlObject, 'defineProperty', [
     obj,
     name,

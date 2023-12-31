@@ -1,4 +1,5 @@
 import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
@@ -12,15 +13,61 @@ Builder finchBuilder(BuilderOptions options) {
   return sg.LibraryBuilder(FinchBuilder(), generatedExtension: '.finch.dart');
 }
 
-class ComponentContext {
+class BuilderContext {
   final functions = <Method>[];
   final classes = <Class>[];
   final fields = <Field>[];
+  final directives = <Directive>[];
+  final showFromSelfImport = <String>{};
 
+  final Map<String, String> _existingImports = {};
+
+  int _nextImportIndex = 1;
+
+  final LibraryElement library;
   final BuildStep buildStep;
   final DartEmitter emitter;
 
-  ComponentContext(this.buildStep, this.emitter);
+  BuilderContext(this.library, this.buildStep, this.emitter) {
+    _existingImports[_getPackageImport(library.identifier)] = '';
+    _existingImports[_getFinchPackageImport(library.identifier)] = '';
+  }
+  
+  String addPrefixedImportFor(Element element) {
+    final elementLibraryImport = _getPackageImport(element.library!.identifier);
+
+    String? prefix = _existingImports[elementLibraryImport];
+    if (prefix != null) {
+      if (prefix.isEmpty) {
+        showFromSelfImport.add(element.name!);
+      }
+
+      return prefix;
+    }
+
+    prefix = '_\$i${_nextImportIndex++}';
+    _existingImports[elementLibraryImport] = prefix;
+
+    directives.add(Directive.import(elementLibraryImport, as: prefix));
+
+    return prefix;
+  }
+  
+  String addPrefixedFinchImportFor(Element element) {
+    final elementLibraryImport = _getFinchPackageImport(element.library!.identifier);
+
+    String? prefix = _existingImports[elementLibraryImport];
+    if (prefix != null) {
+      return prefix;
+    }
+
+    prefix = '_\$i${_nextImportIndex++}';
+    _existingImports[elementLibraryImport] = prefix;
+
+    directives.add(Directive.import(elementLibraryImport, as: prefix));
+
+    return prefix;
+  }
 }
 
 class HookedFunction {
@@ -63,17 +110,35 @@ class ReservedExport {
   ReservedExport(this.name, this.because);
 }
 
+class PrefixedType {
+  final String type;
+  final String prefix;
+
+  PrefixedType(this.type, this.prefix);
+
+  @override
+  String toString() {
+    if (prefix.isEmpty) {
+      return type;
+    } else {
+      return '$prefix.$type';
+    }
+  }
+}
+
 class FinchBuilder extends sg.Generator {
   @override
   Future<String?> generate(sg.LibraryReader library, BuildStep buildStep) async {
     final componentAnnotations = library.annotatedWith($Component).toList();
-    if (componentAnnotations.isEmpty) {
+    final moduleAnnotations = library.annotatedWith($Module).toList();
+
+    if (componentAnnotations.isEmpty && moduleAnnotations.isEmpty) {
       return null;
     }
 
-    final emitter = DartEmitter(allocator: Allocator.simplePrefixing());
+    final emitter = DartEmitter(allocator: Allocator());
 
-    final ctx = ComponentContext(buildStep, emitter);
+    final ctx = BuilderContext(library.element, buildStep, emitter);
 
     for (final annotatedElement in componentAnnotations) {
       final annotation = annotatedElement.annotation;
@@ -92,13 +157,34 @@ class FinchBuilder extends sg.Generator {
       await _generateComponentBacking(element, component, ctx);
     }
 
+    for (final annotatedElement in moduleAnnotations) {
+      final annotation = annotatedElement.annotation;
+      final element = annotatedElement.element;
+
+      if (element is! ClassElement) {
+        throw FinchBuilderException('Only classes may be annotated with @Module.', element);
+      }
+
+      final module = _hydateModuleAnnotation(annotation);
+
+      await _generateModuleBacking(element, module, ctx);
+    }
+
     final libraryAst = Library((l) => l
         ..directives.addAll([
-          Directive.import('dart:js_interop'),
-          Directive.import('package:finch/js_interop.dart'),
-          Directive.import('package:js/js_util.dart'),
-          Directive.import('package:web/web.dart'),
-          Directive.import(library.element.librarySource.shortName)
+          if (componentAnnotations.isNotEmpty)
+            ...[
+              Directive.import('dart:js_interop', as: 'js'),
+              Directive.import('package:finch/internal.dart', as: 'fn'),
+              Directive.import('package:js/js_util.dart', as: 'js'),
+              Directive.import('package:web/web.dart', as: 'web'),
+            ],
+          if (componentAnnotations.isEmpty)
+            Directive.import('package:finch/internal.dart', as: 'fn'),
+          ...ctx.directives,
+          if (ctx.showFromSelfImport.isNotEmpty)
+            Directive.import(library.element.librarySource.shortName, 
+                show: ctx.showFromSelfImport.toList())
         ])
         ..body.addAll([
           ...ctx.fields,
@@ -108,8 +194,246 @@ class FinchBuilder extends sg.Generator {
 
     return libraryAst.accept(emitter).toString();
   }
+  
+  Future<void> _generateModuleBacking(ClassElement element, Module module, BuilderContext context) async {
+    context.showFromSelfImport.add(element.name);
 
-  Future<void> _generateComponentBacking(ClassElement element, Component component, ComponentContext context) async {
+    final imports = <PrefixedType>[];
+    final components = <PrefixedType>[];
+
+    // Determine modules to define
+    for (final module in module.imports) {
+      if (!$Module.hasAnnotationOfExact(module.element!)) {
+        throw FinchBuilderException(
+          'Module ${element.displayName} import type ${module.getDisplayString(withNullability: false)} '
+          'must be annotated with @Module.',
+          element);
+      }
+
+      // Add import if necessary
+      final prefix = context.addPrefixedFinchImportFor(module.element!);
+
+      // Save module name for later
+      imports.add(PrefixedType(module.element!.name!, prefix));
+    }
+
+    // Determine components to define
+    for (final component in module.components) {
+      if (!$Component.hasAnnotationOfExact(component.element!)) {
+        throw FinchBuilderException(
+          'Module ${element.displayName} component type ${component.getDisplayString(withNullability: false)} '
+          'must be annotated with @Component.',
+          element);
+      }
+
+      // Add import if necessary
+      final prefix = context.addPrefixedFinchImportFor(component.element!);
+
+      // Save component name for later
+      components.add(PrefixedType(component.element!.name!, prefix));
+    }
+
+    final sb = StringBuffer();
+
+    // Build provider collection
+    final String ourProvidersVar;
+    if (module.providers.isEmpty) {
+      ourProvidersVar = 'providers';
+    } else {
+      sb.writeln('final builder = fn.ProviderCollectionBuilder()');
+      sb.writeln('..parent = providers');
+
+      try {
+        for (final provider in module.providers) {
+          if ($InstanceProvider.isExactlyType(provider.type!)) {
+            // InstanceProvider
+            final type = provider.getField('type')!.toTypeValue()!;
+            final instanceVar = provider.getField('instance')!.variable;
+
+            if (instanceVar == null) {
+              throw FinchBuilderException('InstanceProvider(${type.element!.name}, ...)\'s second argument must be a const variable.');
+            }
+
+            final typeChecker = sg.TypeChecker.fromStatic(type);
+            if (!typeChecker.isAssignableFromType(instanceVar.type)) {
+              throw FinchBuilderException('InstanceProvider(${type.element!.name}, ...)\'s second argument type must be assignable to the first.');
+            }
+
+            final typePrefix = context.addPrefixedImportFor(type.element!);
+            final prefixedType = PrefixedType(type.element!.name!, typePrefix);
+
+            final varPrefix = context.addPrefixedImportFor(instanceVar);
+            final prefixedVar = PrefixedType(instanceVar.name, varPrefix);
+
+            sb.writeln('..instance<$prefixedType>($prefixedVar)');
+          } else if ($ClassProvider.isExactlyType(provider.type!)) {
+            // ClassProvider
+            final type = provider.getField('type')!.toTypeValue()!;
+            final withClass = provider.getField('withClass')!.toTypeValue() ?? type;
+            final transient = provider.getField('transient')!.toBoolValue()!;
+
+            final typeChecker = sg.TypeChecker.fromStatic(type);
+            if (!typeChecker.isAssignableFromType(withClass)) {
+              throw FinchBuilderException(
+                  'ClassProvider(${type.element!.name}, withClass: ${withClass.element!.name})\'s '
+                  'withClass argument type must be assignable to the first.');
+            }
+
+            final ctor = _buildProviderInstanceConstructorForClass(withClass, context);
+            final method = transient ? 'transient' : 'singleton';
+
+            final prefix = context.addPrefixedImportFor(type.element!);
+            final prefixedType = PrefixedType(type.element!.name!, prefix);
+
+            sb.writeln('..$method<$prefixedType>($ctor)');
+          } else if ($FactoryProvider.isExactlyType(provider.type!)) {
+            // FactoryProvider
+            final type = provider.getField('type')!.toTypeValue()!;
+            final function = provider.getField('function')!.toFunctionValue()!;
+            final transient = provider.getField('transient')!.toBoolValue()!;
+
+            final typeChecker = sg.TypeChecker.fromStatic(type);
+            if (!typeChecker.isAssignableFromType(function.returnType)) {
+              throw FinchBuilderException(
+                  'FactoryProvider(${type.element!.name}, ...)\'s '
+                  'factory return type must be assignable to the first argument type.');
+            }
+
+            final ctor = _buildProviderInstanceConstructorForFactory(function, context);
+            final method = transient ? 'transient' : 'singleton';
+
+            final prefix = context.addPrefixedImportFor(type.element!);
+            final prefixedType = PrefixedType(type.element!.name!, prefix);
+
+            sb.writeln('..$method<$prefixedType>($ctor)');
+          } else {
+            throw FinchBuilderException('Unsupported provider type: ${provider.type!.element!.name}');
+          }
+        }
+      } on FinchBuilderException catch (ex) {
+        throw FinchBuilderException.withElement(ex, element);
+      }
+
+      sb.writeln(';');
+
+      sb.writeln('final ourProviders = builder.build();');
+      ourProvidersVar = 'ourProviders';
+    }
+
+    // Define imported modules first
+    for (final module in imports) {
+      if (module.prefix.isNotEmpty) {
+        sb.write('${module.prefix}.');
+      }
+      sb.writeln('define${module.type}($ourProvidersVar);');
+    }
+
+    sb.writeln();
+
+    // Define components
+    for (final component in components) {
+      if (component.prefix.isNotEmpty) {
+        sb.write('${component.prefix}.');
+      }
+      sb.writeln('define${component.type}($ourProvidersVar);');
+    }
+
+    // Build module define method
+    context.functions.add((MethodBuilder()
+          ..name = 'define${element.name}'
+          ..returns = Reference('void')
+          ..optionalParameters.add((ParameterBuilder()
+                ..name = 'providers'
+                ..type = Reference('fn.ProviderCollection?'))
+              .build())
+          ..body = Code(sb.toString())
+          ..docs.add('/// Defines the module [${element.name}] along with all of its components and imported modules.'))
+        .build());
+  }
+
+  String _buildProviderInstanceConstructorForClass(DartType type, BuilderContext context) {
+    Element element = type.element!;
+    if (element is! ClassElement) {
+      throw FinchBuilderException(
+          'Cannot create provider constructor for type ${type.element!.name} as it is not a class.');
+    }
+
+    final ctor = element.unnamedConstructor;
+    if (ctor == null || ctor.isPrivate) {
+      throw FinchBuilderException(
+          'Cannot create provider constructor for type ${type.element!.name} as it does not have '
+          'a public unnamed constructor. Consider adding one or use a FactoryProvider instead.');
+    }
+    
+    final prefix = context.addPrefixedImportFor(type.element!);
+    final prefixedType = PrefixedType(type.element!.name!, prefix);
+
+    final sb = StringBuffer();
+    sb.write('(c) => $prefixedType(');
+
+    bool first = true;
+    for (final param in ctor.parameters) {
+      if (!first) {
+        sb.write(', ');
+      }
+      first = false;
+      
+      final paramPrefix = context.addPrefixedImportFor(param.type.element!);
+      final paramPrefixedType = PrefixedType(param.type.element!.name!, paramPrefix);
+
+      if (param.isNamed) {
+        sb.write('${param.name}: ');
+      }
+
+      sb.write('c.resolve<$paramPrefixedType>()');
+    }
+
+    sb.write(')');
+
+    return sb.toString();
+  }
+
+  String _buildProviderInstanceConstructorForFactory(ExecutableElement factory, BuilderContext context) {
+    final PrefixedType prefixedFactory;
+    if (factory.enclosingElement is ClassElement) {
+      final prefix = context.addPrefixedImportFor(factory.enclosingElement);
+      final qualifiedName = factory.name.isEmpty
+        ? factory.enclosingElement.name!
+        : '${factory.enclosingElement.name!}.${factory.name}';
+      prefixedFactory = PrefixedType(qualifiedName, prefix);
+    } else {
+      final prefix = context.addPrefixedImportFor(factory);
+      prefixedFactory = PrefixedType(factory.name, prefix);
+    }
+
+    final sb = StringBuffer();
+    sb.write('(c) => $prefixedFactory(');
+
+    bool first = true;
+    for (final param in factory.parameters) {
+      if (!first) {
+        sb.write(', ');
+      }
+      first = false;
+      
+      final paramPrefix = context.addPrefixedImportFor(param.type.element!);
+      final paramPrefixedType = PrefixedType(param.type.element!.name!, paramPrefix);
+
+      if (param.isNamed) {
+        sb.write('${param.name}: ');
+      }
+
+      sb.write('c.resolve<$paramPrefixedType>()');
+    }
+
+    sb.write(')');
+
+    return sb.toString();
+  }
+
+  Future<void> _generateComponentBacking(ClassElement element, Component component, BuilderContext context) async {
+    context.showFromSelfImport.add(element.name);
+
     // Generate embedded template and style
     if (component.template != null && component.templateUrl != null) {
       throw FinchBuilderException('Cannot specify both a template and template URL.', element);
@@ -134,7 +458,7 @@ class FinchBuilder extends sg.Generator {
     final $class = ClassBuilder()
         ..name = '_\$${element.name}Component'
         ..extend = Reference(element.name);
-    
+
     final ctor = ConstructorBuilder();
 
     if (element.unnamedConstructor == null) {
@@ -414,8 +738,11 @@ class FinchBuilder extends sg.Generator {
     // Start building define method
     final defineSb = StringBuffer();
 
+    // Generate provider collection creation
+    defineSb.writeln('fn.ProviderCollection ourProviders = providers ?? fn.ProviderCollection.empty();');
+
     // Generate element class creation
-    defineSb.writeln('final ctor = createCustomElementClass((element) {');
+    defineSb.writeln('final ctor = fn.createCustomElementClass((element) {');
     
     bool needShadowVar = ctorParams.any((p) => 
             $HTMLElement.isAssignableFromType(p.type) || 
@@ -426,10 +753,10 @@ class FinchBuilder extends sg.Generator {
     if (needShadowVar) {
       defineSb.write('final shadow = ');
     }
-    defineSb.writeln('element.attachShadow(ShadowRootInit(mode: \'open\'));');
+    defineSb.writeln('element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
 
     if (styleField != null) {
-      defineSb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as JSArray;');
+      defineSb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
     }
 
     if (templateField != null) {
@@ -452,43 +779,48 @@ class FinchBuilder extends sg.Generator {
       } else if ($ElementInternals.isExactlyType(param.type) && isFormComponent) {
         return 'internals';
       } else {
-        throw FinchBuilderException(
-          'Unsupported component constructor parameter ${param.type} ${param.displayName}.', 
-          element.unnamedConstructor);
+        final prefix = context.addPrefixedImportFor(param.type.element!);
+        final prefixedType = PrefixedType(param.type.element!.name!, prefix);
+        return 'ourProviders.resolve<$prefixedType>()';
       }
     });
 
-    defineSb.writeln('return ${$class.name}(${ctorArgs.join(', ')});');
+    defineSb.writeln('return ${$class.name}(${ctorArgs.join(', ')},);');
 
     defineSb.writeln('});');
 
     if (hookedFunctions.any((f) => !f.isStatic) || 
         hookedProperties.any((f) => !f.isStatic) || 
         observedAttributes.isNotEmpty) {
-      defineSb.writeln('final proto = getProperty(ctor, \'prototype\');');
+      defineSb.writeln('final proto = js.getProperty(ctor, \'prototype\');');
     }
 
     _hookFunctions(hookedFunctions, element.name, $class.name!, defineSb);
     _hookProperties(hookedProperties, element.name, $class.name!, defineSb);
 
     if (isFormComponent) {
-      defineSb.writeln('setProperty(ctor, \'formAssociated\', true);');
+      defineSb.writeln('js.setProperty(ctor, \'formAssociated\', true);');
     }
 
     if (observedAttributes.isNotEmpty) {
       final list = literalConstList(observedAttributes.map((a) => a.attr).toList())
           .accept(context.emitter);
-      defineSb.writeln('setProperty(ctor, \'observedAttributes\', $list);');
+      defineSb.writeln('js.setProperty(ctor, \'observedAttributes\', $list);');
     }
 
     // Finish define method
-    defineSb.writeln('window.customElements.define(\'${component.tag}\', ctor);');
+    defineSb.writeln('web.window.customElements.define(\'${component.tag}\', ctor);');
 
     // Done
     context.functions.add((MethodBuilder()
           ..name = 'define${element.name}'
           ..returns = Reference('void')
-          ..body = Code(defineSb.toString()))
+          ..optionalParameters.add((ParameterBuilder()
+                ..name = 'providers'
+                ..type = Reference('fn.ProviderCollection?'))
+              .build())
+          ..body = Code(defineSb.toString())
+          ..docs.add('/// Defines the component [${element.name}] as the custom element `${component.tag}`.'))
         .build());
 
     context.classes.add($class.build());
@@ -545,7 +877,7 @@ class FinchBuilder extends sg.Generator {
   void _hookFunctions(List<HookedFunction> functions, String className, String subClassName, StringBuffer sb) {
     for (final func in functions) {
       if (func.isStatic) {
-        sb.write('setProperty(ctor, \'${func.from}\', allowInterop((${func.fromParameters.join(', ')}) {');
+        sb.write('js.setProperty(ctor, \'${func.from}\', js.allowInterop((${func.fromParameters.join(', ')}) {');
 
         sb.write('$className.${func.to ?? func.from}(');
         sb.write((func.toParameters ?? func.fromParameters).join(', '));
@@ -553,7 +885,7 @@ class FinchBuilder extends sg.Generator {
 
         sb.writeln('}));');
       } else {
-        sb.write('setProperty(proto, \'${func.from}\', allowInteropCaptureThis((HTMLElement self');
+        sb.write('js.setProperty(proto, \'${func.from}\', js.allowInteropCaptureThis((web.HTMLElement self');
         for (final param in func.fromParameters) {
           sb.write(', $param');
         }
@@ -576,7 +908,7 @@ class FinchBuilder extends sg.Generator {
       }
 
       if (field.isStatic) {
-        sb.writeln('defineProperty(ctor, \'${field.from}\', ');
+        sb.writeln('fn.defineProperty(ctor, \'${field.from}\', ');
         if (field.isGetter) {
           sb.writeln('getter: () {');
           sb.writeln('return $className.${field.to ?? field.from};');
@@ -591,9 +923,9 @@ class FinchBuilder extends sg.Generator {
           sb.writeln('}');
         }
       } else {
-        sb.writeln('definePropertyCaptureThis(proto, \'${field.from}\', ');
+        sb.writeln('fn.definePropertyCaptureThis(proto, \'${field.from}\', ');
         if (field.isGetter) {
-          sb.writeln('getter: (Element self) {');
+          sb.writeln('getter: (web.HTMLElement self) {');
           sb.writeln('return self.component<$subClassName>().${field.to ?? field.from};');
           sb.writeln('}');
         }
@@ -601,7 +933,7 @@ class FinchBuilder extends sg.Generator {
           if (field.isGetter) {
             sb.write(',');
           }
-          sb.writeln('setter: (Element self, value) {');
+          sb.writeln('setter: (web.HTMLElement self, value) {');
           sb.writeln('self.component<$subClassName>().${field.to ?? field.from} = value;');
           sb.writeln('}');
         }
@@ -640,7 +972,7 @@ class FinchBuilder extends sg.Generator {
     return (FieldBuilder()
         ..name = '_template'
         ..modifier = FieldModifier.final$
-        ..assignment = Code('(document.createElement(\'template\') as HTMLTemplateElement)..innerHTML = \'\'\'$html\'\'\''))
+        ..assignment = Code('(web.document.createElement(\'template\') as web.HTMLTemplateElement)..innerHTML = \'\'\'$html\'\'\''))
       .build();
   }
 
@@ -674,7 +1006,7 @@ class FinchBuilder extends sg.Generator {
     return (FieldBuilder()
         ..name = '_style'
         ..modifier = FieldModifier.final$
-        ..assignment = Code('CSSStyleSheet()..replaceSync(\'\'\'$css\'\'\')'))
+        ..assignment = Code('web.CSSStyleSheet()..replaceSync(\'\'\'$css\'\'\')'))
       .build();
   }
 
@@ -687,6 +1019,41 @@ class FinchBuilder extends sg.Generator {
       styleUrl: reader.read('styleUrl').stringValueOrNull,
     );
   }
+
+  Module _hydateModuleAnnotation(sg.ConstantReader reader) {
+    return Module(
+      imports: reader.read('imports').listValue
+          .map((t) => t.toTypeValue()!)
+          .toList(),
+      components: reader.read('components').listValue
+          .map((t) => t.toTypeValue()!)
+          .toList(),
+      providers: reader.read('providers').listValue,
+    );
+  }
+}
+
+String _getPackageImport(String identifier) {
+  var assetId = AssetId.resolve(Uri.parse(identifier));
+
+  var path = assetId.path;
+  if (path.startsWith('lib/')) {
+    path = path.substring(4);
+  }
+
+  return 'package:${assetId.package}/$path';
+}
+
+String _getFinchPackageImport(String identifier) {
+  var assetId = AssetId.resolve(Uri.parse(identifier));
+  assetId = assetId.changeExtension('.finch.dart');
+
+  var path = assetId.path;
+  if (path.startsWith('lib/')) {
+    path = path.substring(4);
+  }
+
+  return 'package:${assetId.package}/$path';
 }
 
 class ObservedAttribute {
@@ -714,6 +1081,19 @@ class Component {
   });
 }
 
+class Module {
+  final List<DartType> imports;
+  final List<DartType> components;
+  final List<DartObject> providers;
+
+  const Module({
+    required this.imports,
+    required this.components,
+    required this.providers,
+  });
+}
+
+
 extension on sg.ConstantReader {
   String? get stringValueOrNull => isNull ? null : stringValue;
 }
@@ -724,6 +1104,10 @@ class FinchBuilderException implements Exception {
   final Element? element;
 
   FinchBuilderException(this.message, [this.element, this.innerException]);
+
+  factory FinchBuilderException.withElement(FinchBuilderException ex, Element element) {
+    return FinchBuilderException(ex.message, element, ex.innerException);
+  }
 
   @override
   String toString() {

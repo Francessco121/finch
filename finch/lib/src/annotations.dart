@@ -1,3 +1,5 @@
+import 'provider.dart';
+
 /// Declares a class as a Finch component.
 final class Component {
   final String tag;
@@ -28,7 +30,7 @@ final class Observe {
   /// when it changes and also on element upgrade if the attribute has an
   /// initial value.
   /// 
-  /// The attribute name defaults to the name of the annoated field/setter,
+  /// The attribute name defaults to the name of the annotated field/setter,
   /// but can be overridden with the [name] argument.
   const Observe([this.name]);
 }
@@ -47,4 +49,16 @@ final class Export {
   /// 
   /// Supports static members.
   const Export([this.name]);
+}
+
+final class Module {
+  final List<Type> imports;
+  final List<Type> components;
+  final List<Provider> providers;
+
+  const Module({
+    this.imports = const [],
+    this.components = const [],
+    this.providers = const [],
+  });
 }

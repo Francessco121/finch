@@ -1,5 +1,6 @@
 import 'package:finch/finch.dart';
-import 'package:web/web.dart';
+import 'package:http/http.dart';
+import 'package:web/web.dart' hide Client;
 
 @Component(
   tag: 'test-component',
@@ -27,10 +28,13 @@ class TestComponent extends FormComponent<int> implements OnConnected, OnFormAss
   //final HTMLElement _element;
   //final ElementInternals _internals;
 
-  TestComponent(super._element, super._internals);
+  final Client _client;
+
+  TestComponent(this._client, super._element, super._internals);
 
   void dartFunction(String message) {
     print(message);
+    print(_client);
   }
 
   @override

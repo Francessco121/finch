@@ -1,12 +1,12 @@
 import 'package:web/web.dart';
 
 /// When implemented or extended by a Finch component, declares its underlying custom element
-/// as form-associated. This class defines the standard interface for form controls.
+/// as form-associated. This class defines a standard interface for form controls.
 ///
 /// Form components should ensure that the [value] property is propagated to the element internals
 /// to ensure the parent form is submitted with the correct value of this control.
 ///
-/// All properties and methods defined by this class will automatically be exported the
+/// All properties and methods defined by this class will automatically be exported to the
 /// underlying JS class.
 /// 
 /// Components that implement or extend this class can access their [ElementInternals] by

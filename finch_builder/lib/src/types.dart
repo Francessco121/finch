@@ -9,6 +9,7 @@ const _finch = 'package:finch';
 const _finchAnnotations = '$_finch/src/annotations.dart';
 const _finchForms = '$_finch/src/forms.dart';
 const _finchLifecycle = '$_finch/src/lifecycle.dart';
+const _finchProvider = '$_finch/src/provider.dart';
 
 // dart:core
 const $Object = TypeChecker.fromUrl('$_dartCore#Object');
@@ -23,6 +24,7 @@ const $bool = TypeChecker.fromUrl('$_dartCore#bool');
 const $Component = TypeChecker.fromUrl('$_finchAnnotations#Component');
 const $Observe = TypeChecker.fromUrl('$_finchAnnotations#Observe');
 const $Export = TypeChecker.fromUrl('$_finchAnnotations#Export');
+const $Module = TypeChecker.fromUrl('$_finchAnnotations#Module');
 
 const $FormComponent = TypeChecker.fromUrl('$_finchForms#FormComponent');
 const $OnFormAssociated = TypeChecker.fromUrl('$_finchForms#OnFormAssociated');
@@ -34,6 +36,11 @@ const $OnConnected = TypeChecker.fromUrl('$_finchLifecycle#OnConnected');
 const $OnDisconnected = TypeChecker.fromUrl('$_finchLifecycle#OnDisconnected');
 const $OnAttributeChanged = TypeChecker.fromUrl('$_finchLifecycle#OnAttributeChanged');
 const $OnAdopted = TypeChecker.fromUrl('$_finchLifecycle#OnAdopted');
+
+const $Provider = TypeChecker.fromUrl('$_finchProvider#Provider');
+const $InstanceProvider = TypeChecker.fromUrl('$_finchProvider#InstanceProvider');
+const $ClassProvider = TypeChecker.fromUrl('$_finchProvider#ClassProvider');
+const $FactoryProvider = TypeChecker.fromUrl('$_finchProvider#FactoryProvider');
 
 // package:web
 const $HTMLElement = TypeChecker.fromUrl('$_webHtml#HTMLElement');

@@ -8,6 +8,7 @@ environment:
 dependencies:
   finch:
     path: ../finch
+  http: ^1.1.2
   js: ^0.6.7
   web: ^0.4.0
 
