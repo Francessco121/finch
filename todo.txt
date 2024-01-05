@@ -1,4 +1,3 @@
-- allow multiple @Export and @Observe attributes on the same element
 - allow multiple stylesheets on a single component
 - allow @Component to configure how the shadow dom is initialized
 - component inheritance

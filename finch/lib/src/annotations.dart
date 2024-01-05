@@ -38,7 +38,7 @@ final class Component {
 /// Declares an element attribute to be observed.
 /// 
 /// Only valid on instance fields/setters inside of a Finch component class.
-final class Observe {
+final class Attribute {
   /// The name of the attribute to observe.
   /// 
   /// If null, defaults to the name of the annotated member.
@@ -48,11 +48,20 @@ final class Observe {
   /// 
   /// The annotated field/setter will be set to the value of the attribute
   /// when it changes and also on element upgrade if the attribute has an
-  /// initial value.
+  /// initial value. Additionally, a render will be scheduled on change.
   /// 
   /// The attribute name defaults to the name of the annotated field/setter,
   /// but can be overridden with the [name] argument.
-  const Observe([this.name]);
+  const Attribute([this.name]);
+}
+
+/// Declares a field or setter as a reactive property.
+final class Property {
+  /// Declare a field or setter as a reactive property.
+  /// 
+  /// When the annotated member is set, a render will be scheduled with the component.
+  /// It is not necessary to annotate @[Attribute] members with @[Property] as well.
+  const Property();
 }
 
 /// Declares a field, property, or method of a Finch component to be exported

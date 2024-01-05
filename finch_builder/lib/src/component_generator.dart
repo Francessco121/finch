@@ -15,6 +15,9 @@ import 'utils.dart';
 Future<void> generateCodeForComponent(ClassElement element, Component component, BuilderContext context) async {
   context.showFromSelfImport.add(element.name);
 
+  // Make subclass name
+  final subclassName = '_\$${element.name}';
+
   // Generate embedded template and style
   if (component.template != null && component.templateUrl != null) {
     throw FinchBuilderException('Cannot specify both a template and template URL.', element);
@@ -34,6 +37,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     context.fields.add(styleField);
   }
 
+  // Find component constructor
   if (element.unnamedConstructor == null) {
     throw FinchBuilderException(
       'Component ${element.name} must either have no constructors or declare an unnamed constructor.', 
@@ -49,13 +53,18 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   final hookedFunctions = <HookedFunction>[];
   final hookedProperties = <HookedProperty>[];
 
-  // Hook lifecycle callbacks (except attributeChanged, which needs a special hook)
+  // Iterate implemented interfaces
+  bool hasOnConnected = false;
   bool hasOnAttributeChanged = false;
   bool hasFormLifecycle = false;
+  bool hasOnTemplateInit = false;
+  bool hasOnFirstRender = false;
+  bool hasOnRender = false;
 
   for (final interface in element.interfaces) {
     if ($OnConnected.isExactlyType(interface)) {
       // OnConnected
+      hasOnConnected = true;
       hookedFunctions.add(HookedFunction('connectedCallback', const [], 'onConnected', null));
       reservedExports['connectedCallback'] = 'implements OnConnected';
     } else if ($OnDisconnected.isExactlyType(interface)) {
@@ -90,7 +99,22 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
       hookedFunctions.add(HookedFunction('formStateRestoreCallback', const ['state', 'mode'], 'onFormStateRestore', null));
       reservedExports['formStateRestoreCallback'] = 'implements OnFormStateRestore';
       hasFormLifecycle = true;
+    } else if ($OnTemplateInit.isExactlyType(interface)) {
+      // OnTemplateInit
+      hasOnTemplateInit = true;
+    } else if ($OnFirstRender.isExactlyType(interface)) {
+      // OnFirstRender
+      hasOnFirstRender = true;
+    } else if ($OnRender.isExactlyType(interface)) {
+      // OnRender
+      hasOnRender = true;
     }
+  }
+
+  // Always hook connectedCallback if we need to override it internally to set up the template
+  if (!hasOnConnected && (hasOnTemplateInit || templateField != null)) {
+    hookedFunctions.add(HookedFunction('connectedCallback', const [], 'onConnected', null, callSubclass: true));
+    reservedExports['connectedCallback'] = 'reserved by Finch';
   }
 
   // Handle form components
@@ -133,29 +157,40 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   }
 
   // Handle annotated child elements
-  final observedAttributes = <ObservedAttribute>[];
+  final observedProperties = <String, ObservedProperty>{};
   final exportedFunctions = <ExportedFunction>{};
   final exportedProperties = <String, ExportedProperty>{};
 
   for (final child in element.children) {
-    final observe = $Observe.firstAnnotationOfExact(child);
-    final export = $Export.firstAnnotationOfExact(child);
+    final attributes = $Attribute.annotationsOfExact(child);
+    final property = $Property.firstAnnotationOfExact(child);
+    final exports = $Export.annotationsOfExact(child);
 
     if (child is FieldElement) {
-      // @Observe on field
-      if (observe != null) {
+      // @Attribute on field
+      for (final attribute in attributes) {
         if (child.isPrivate || child.isStatic) {
-          throw FinchBuilderException('@Observe fields cannot be private or static.', child);
+          throw FinchBuilderException('@Attribute fields cannot be private or static.', child);
         }
 
-        final attr = observe.getField('name')!.toStringValue()
+        final attr = attribute.getField('name')!.toStringValue()
             ?? child.name;
+        
+        final prop = observedProperties.putIfAbsent(child.name, () => ObservedProperty(child.name, child.type, child));
+        prop.attrs.add(attr);
+      }
 
-        observedAttributes.add(ObservedAttribute(attr, child.name, child.type, child));
+      // @Property on field
+      if (property != null) {
+        if (child.isPrivate || child.isStatic) {
+          throw FinchBuilderException('@Property fields cannot be private or static.', child);
+        }
+
+        observedProperties.putIfAbsent(child.name, () => ObservedProperty(child.name, child.type, child));
       }
 
       // @Export on field
-      if (export != null) {
+      for (final export in exports) {
         if (child.isPrivate) {
           throw FinchBuilderException('@Export fields cannot be private.', child);
         }
@@ -170,13 +205,13 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
         prop.isSetter = prop.isSetter || (!child.isFinal && !child.isConst);
       }
     } else if (child is PropertyAccessorElement) {
-      // @Observe on property
-      if (observe != null) {
+      // @Attribute on property
+      for (final attribute in attributes) {
         if (child.isGetter) {
-          throw FinchBuilderException('@Observe must be on the property setter, not getter.', child);
+          throw FinchBuilderException('@Attribute must be on the property setter, not getter.', child);
         }
         if (child.isPrivate || child.isStatic) {
-          throw FinchBuilderException('@Observe setters cannot be private or static.', child);
+          throw FinchBuilderException('@Attribute setters cannot be private or static.', child);
         }
 
         String setterName = child.name;
@@ -184,15 +219,33 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
           setterName = setterName.substring(0, setterName.length - 1);
         }
 
-        final attr = observe.getField('name')!.toStringValue()
+        final attr = attribute.getField('name')!.toStringValue()
             ?? setterName;
         final type = child.parameters.first.type;
 
-        observedAttributes.add(ObservedAttribute(attr, setterName, type, child));
+        final prop = observedProperties.putIfAbsent(setterName, () => ObservedProperty(setterName, type, child));
+        prop.attrs.add(attr);
+      }
+
+      // @Property on property
+      if (property != null) {
+        if (child.isGetter) {
+          throw FinchBuilderException('@Property must be on the property setter, not getter.', child);
+        }
+        if (child.isPrivate || child.isStatic) {
+          throw FinchBuilderException('@Property setters cannot be private or static.', child);
+        }
+
+        String setterName = child.name;
+        if (child.name.endsWith('=')) {
+          setterName = setterName.substring(0, setterName.length - 1);
+        }
+
+        observedProperties.putIfAbsent(setterName, () => ObservedProperty(setterName, child.type, child));
       }
 
       // @Export on property
-      if (export != null) {
+      for (final export in exports) {
         if (child.isPrivate) {
           throw FinchBuilderException('@Export properties cannot be private.', child);
         }
@@ -213,7 +266,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
       }
     } else if (child is MethodElement) {
       // @Export on method
-      if (export != null) {
+      for (final export in exports) {
         if (child.isPrivate) {
           throw FinchBuilderException('@Export methods cannot be private.', child);
         }
@@ -227,10 +280,14 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     }
   }
 
-  // Disallow exporting attributeChangedCallback if @Observe is used since we'll
+  final observedAttributes = observedProperties.values
+      .where((p) => p.attrs.isNotEmpty)
+      .toList();
+
+  // Disallow exporting attributeChangedCallback if @Attribute is used since we'll
   // be generating a custom hook for it
   if (observedAttributes.isNotEmpty) {
-    reservedExports['attributeChangedCallback'] = '@Observe field(s)/setter(s)';
+    reservedExports['attributeChangedCallback'] = '@Attribute field(s)/setter(s)';
   }
 
   if (hasOnAttributeChanged && observedAttributes.isEmpty) {
@@ -238,7 +295,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     // just hook attributeChangedCallback directly up and issue a build warning
     log.warning(
       'Component ${element.displayName} implements OnAttributeChanged but doesn\'t '
-      'declare any @Observe fields/setters. The callback will never be invoked.');
+      'declare any @Attribute fields/setters. The callback will never be invoked.');
     hookedFunctions.add(HookedFunction(
         'attributeChangedCallback', 
         const ['name', 'oldValue', 'newValue', 'namespace'], 
@@ -277,6 +334,149 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   hookedFunctions.addAll(exportedFunctions);
   hookedProperties.addAll(exportedProperties.values);
 
+  // Build subclass
+  final subclass = ClassBuilder()
+    ..name = subclassName
+    ..extend = Reference(element.name)
+    ..fields.add((FieldBuilder()
+        ..name = '_rs'
+        ..type = Reference('fn.RenderScheduler')
+        ..modifier = FieldModifier.final$)
+      .build())
+    ..fields.add((FieldBuilder()
+        ..name = '_shadow'
+        ..type = Reference('web.ShadowRoot')
+        ..modifier = FieldModifier.final$)
+      .build());
+  
+  final subclassCtor = ConstructorBuilder();
+  subclassCtor.requiredParameters.add((ParameterBuilder()
+      ..name = 'renderScheduler'
+      ..type = Reference('fn.RenderScheduler'))
+    .build());
+  subclassCtor.requiredParameters.add((ParameterBuilder()
+      ..name = 'shadow'
+      ..type = Reference('web.ShadowRoot'))
+    .build());
+  final subclassCtorSuperParams = <String>[];
+  for (final param in ctorParams) {
+    if ($RenderScheduler.isExactlyType(param.type)) {
+      subclassCtorSuperParams.add('renderScheduler');
+    } else if ($ShadowRoot.isExactlyType(param.type)) {
+      subclassCtorSuperParams.add('shadow');
+    } else {
+      String name = param.name;
+      if (name.startsWith('_') && name.length > 1) {
+        name = name.substring(1);
+      }
+      if (name == 'renderScheduler') {
+        name = '\$$name';
+      }
+
+      subclassCtor.requiredParameters.add((ParameterBuilder()
+          ..name = name
+          ..named = param.isNamed
+          ..type = Reference('web.${param.type.element!.name!}'))
+        .build());
+      subclassCtorSuperParams.add(name);
+    }
+  }
+  subclassCtor.initializers
+      ..add(Code('_rs = renderScheduler'))
+      ..add(Code('_shadow = shadow'))
+      ..add(Code('super(${subclassCtorSuperParams.join(',')})'));
+  subclass.constructors.add(subclassCtor.build());
+  
+  // Build rerender subclass method
+  if (hasOnRender || hasOnFirstRender) {
+    if (hasOnFirstRender) {
+      subclass.fields.add((FieldBuilder()
+          ..name = '_firstRender'
+          ..type = Reference('bool')
+          ..assignment = Code('true'))
+        .build());
+    }
+
+    final rerenderSb = StringBuffer();
+
+    if (hasOnFirstRender) {
+      rerenderSb.writeln('if (_firstRender) {');
+      rerenderSb.writeln('_firstRender = false;');
+      rerenderSb.writeln('super.onFirstRender();');
+      rerenderSb.writeln('}');
+    }
+
+    if (hasOnRender) {
+      rerenderSb.writeln('super.onRender();');
+    }
+
+    subclass.methods.add((MethodBuilder()
+        ..name = '_rerender'
+        ..returns = Reference('void')
+        ..body = Code(rerenderSb.toString()))
+      .build());
+  }
+
+  // Initialize template and schedule first render on first connect
+  if (hasOnTemplateInit || templateField != null) {
+    subclass.fields.add((FieldBuilder()
+        ..name = '_firstConnect'
+        ..type = Reference('bool')
+        ..assignment = Code('true'))
+      .build());
+
+    final callSuper = hasOnConnected;
+
+    final method = MethodBuilder()
+        ..name = 'onConnected'
+        ..returns = Reference('void');
+      
+    final methodSb = StringBuffer();
+    methodSb.writeln('if (_firstConnect) {');
+    methodSb.writeln('_firstConnect = false;');
+
+    // Note: Schedule a render before we append the template so that our onRender runs before
+    // any child component's onRender
+    if (hasOnRender || hasOnFirstRender) {
+      methodSb.writeln('_rs.scheduleRender();');
+    }
+    
+    if (templateField != null) {
+      methodSb.writeln('_shadow.appendChild(${templateField.name}.content.cloneNode(true));');
+    }
+
+    if (hasOnTemplateInit) {
+      methodSb.writeln('super.onTemplateInit();');
+    }
+
+    methodSb.writeln('}');
+
+    if (callSuper) {
+      method.annotations.add(CodeExpression(Code('override')));
+      methodSb.writeln('super.onConnected();');
+    }
+
+    method.body = Code(methodSb.toString());
+    
+    subclass.methods.add(method.build());
+  }
+
+  // Override @Attribute/@Property properties/fields in subclass
+  for (final prop in observedProperties.values) {
+    subclass.methods.add((MethodBuilder()
+        ..name = prop.field
+        ..type = MethodType.setter
+        ..requiredParameters.add((ParameterBuilder()
+            ..name = 'value')
+          .build())
+        ..annotations.add(CodeExpression(Code('override')))
+        ..body = Code('''
+          super.${prop.field} = value;
+          _rs.scheduleRender();
+        '''))
+      .build());
+  }
+
   // Start building define method
   final sb = StringBuffer();
 
@@ -286,19 +486,10 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   // Generate element class creation
   sb.writeln('final ctor = fn.createCustomElementClass((element) {');
   
-  if (ctorParams.any((p) => $ShadowRoot.isExactlyType(p.type)) ||
-      templateField != null ||
-      styleField != null) {
-    sb.write('final shadow = ');
-  }
-  sb.writeln('element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
+  sb.writeln('final shadow = element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
 
   if (styleField != null) {
     sb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
-  }
-
-  if (templateField != null) {
-    sb.writeln('shadow.appendChild(${templateField.name}.content.cloneNode(true));');
   }
 
   final hasElementInternalsParam = ctorParams.any((p) => $ElementInternals.isExactlyType(p.type));
@@ -310,15 +501,27 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     sb.writeln('element.attachInternals();');
   }
 
-  final ctorArgs = ctorParams.map((param) {
+  sb.writeln('late final $subclassName component;');
+
+  if (hasOnRender || hasOnFirstRender) {
+    sb.writeln('final renderScheduler = fn.RenderScheduler(() => component._rerender());');
+  } else {
+    sb.writeln('final renderScheduler = fn.RenderScheduler.noop();');
+  }
+
+  final ctorArgs = const <String?>['renderScheduler', 'shadow'].followedBy(ctorParams.map((param) {
     if ($HTMLElement.isAssignableFromType(param.type)) {
       return 'element';
     } else if ($ShadowRoot.isExactlyType(param.type)) {
-      return 'shadow';
+      // Handled by subclass
+      return null;
     } else if ($ElementInternals.isExactlyType(param.type)) {
       return 'internals';
     } else if ($ProviderCollection.isExactlyType(param.type)) {
       return 'ourProviders';
+    } else if ($RenderScheduler.isExactlyType(param.type)) {
+      // Handled by subclass
+      return null;
     } else {
       final prefix = context.addPrefixedImportFor(param.type.element!);
       final prefixedType = PrefixedType(param.type.element!.name!, prefix);
@@ -328,9 +531,11 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
       
       return 'ourProviders.$method<$prefixedType>()';
     }
-  });
+  }));
 
-  sb.writeln('return ${element.name}(${ctorArgs.join(', ')},);');
+  sb.writeln('component = $subclassName(${ctorArgs.where((a) => a != null).join(', ')},);');
+
+  sb.writeln('return component;');
 
   sb.writeln('}, fn.elementUpgraded);');
 
@@ -344,7 +549,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     _hookObservedAttributes(observedAttributes, hasOnAttributeChanged, element.name, sb);
   }
 
-  _hookFunctions(hookedFunctions, element.name, sb);
+  _hookFunctions(hookedFunctions, element.name, subclassName, sb);
   _hookProperties(hookedProperties, element.name, sb);
 
   if (isFormComponent) {
@@ -352,8 +557,11 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   }
 
   if (observedAttributes.isNotEmpty) {
-    final list = literalConstList(observedAttributes.map((a) => a.attr).toList())
-        .accept(context.emitter);
+    final uniqueAttrs = {
+      for (final attr in observedAttributes)
+        ...attr.attrs
+    };
+    final list = literalConstList(uniqueAttrs.toList()).accept(context.emitter);
     sb.writeln('js.setProperty(ctor, \'observedAttributes\', $list);');
   }
 
@@ -372,6 +580,9 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
         ..body = Code(sb.toString())
         ..docs.add('/// Defines the component [${element.name}] as the custom element `${component.tag}`.'))
       .build());
+  
+  // Emit subclass
+  context.classes.add(subclass.build());
 }
 
 Never _throwAttributeTypeException(Element element) {
@@ -380,7 +591,7 @@ Never _throwAttributeTypeException(Element element) {
       element);
 }
 
-void _hookObservedAttributes(List<ObservedAttribute> attributes, bool callComponentCallback, String className, StringBuffer sb) {
+void _hookObservedAttributes(List<ObservedProperty> attributes, bool callComponentCallback, String className, StringBuffer sb) {
   sb.writeln(
     'js.setProperty(proto, \'attributeChangedCallback\', js.allowInteropCaptureThis('
     '(web.HTMLElement self, String name, oldValue, newValue, namespace) {');
@@ -389,7 +600,14 @@ void _hookObservedAttributes(List<ObservedAttribute> attributes, bool callCompon
   sb.writeln('switch (name) {');
 
   for (final attr in attributes) {
-    sb.writeln('case \'${attr.attr.replaceAll('\'', '\\\'')}\':');
+    if (attr.attrs.isEmpty) {
+      // Should be impossible
+      continue;
+    }
+
+    for (final attrName in attr.attrs) {
+      sb.writeln('case \'${attrName.replaceAll('\'', '\\\'')}\':');
+    }
 
     if (attr.type is DynamicType) {
       sb.writeln('component.${attr.field} = newValue;');
@@ -425,12 +643,14 @@ void _hookObservedAttributes(List<ObservedAttribute> attributes, bool callCompon
   sb.writeln('}));');
 }
 
-void _hookFunctions(List<HookedFunction> functions, String className, StringBuffer sb) {
+void _hookFunctions(List<HookedFunction> functions, String className, String subclassName, StringBuffer sb) {
   for (final func in functions) {
+    final $class = func.callSubclass ? subclassName : className;
+
     if (func.isStatic) {
       sb.write('js.setProperty(ctor, \'${func.from}\', js.allowInterop((${func.fromParameters.join(', ')}) {');
 
-      sb.write('$className.${func.to ?? func.from}(');
+      sb.write('${$class}.${func.to ?? func.from}(');
       sb.write((func.toParameters ?? func.fromParameters).join(', '));
       sb.writeln(');');
 
@@ -442,7 +662,7 @@ void _hookFunctions(List<HookedFunction> functions, String className, StringBuff
       }
       sb.writeln(') {');
 
-      sb.write('self.component<$className>().${func.to ?? func.from}(');
+      sb.write('self.component<${$class}>().${func.to ?? func.from}(');
       sb.write((func.toParameters ?? func.fromParameters).join(', '));
       sb.writeln(');');
 
@@ -521,7 +741,7 @@ Future<Field?> _makeTemplateField(Component component, Element classElement, Bui
       .replaceAll(r"'''", r"\'''");
 
   return (FieldBuilder()
-      ..name = '_template'
+      ..name = '_template${classElement.name}'
       ..modifier = FieldModifier.final$
       ..assignment = Code('(web.document.createElement(\'template\') as web.HTMLTemplateElement)..innerHTML = \'\'\'$html\'\'\''))
     .build();
@@ -555,7 +775,7 @@ Future<Field?> _makeStyleField(Component component, Element classElement, BuildS
       .replaceAll(r"'''", r"\'''");
 
   return (FieldBuilder()
-      ..name = '_style'
+      ..name = '_style${classElement.name}'
       ..modifier = FieldModifier.final$
       ..assignment = Code('web.CSSStyleSheet()..replaceSync(\'\'\'$css\'\'\')'))
     .build();

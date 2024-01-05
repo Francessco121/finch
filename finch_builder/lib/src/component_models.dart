@@ -10,8 +10,9 @@ class HookedFunction {
   final String? to;
   final List<String>? toParameters;
   final bool isStatic;
+  final bool callSubclass;
 
-  HookedFunction(this.from, this.fromParameters, this.to, this.toParameters, {this.isStatic = false});
+  HookedFunction(this.from, this.fromParameters, this.to, this.toParameters, {this.isStatic = false, this.callSubclass = false});
 }
 
 class ExportedFunction extends HookedFunction {
@@ -44,11 +45,12 @@ class ReservedExport {
   ReservedExport(this.name, this.because);
 }
 
-class ObservedAttribute {
-  final String attr;
+class ObservedProperty {
+  final Set<String> attrs = {};
+
   final String field;
   final DartType type;
   final Element element;
 
-  ObservedAttribute(this.attr, this.field, this.type, this.element);
+  ObservedProperty(this.field, this.type, this.element);
 }

@@ -3,6 +3,7 @@ import 'package:source_gen/source_gen.dart';
 const _dartCore = 'dart:core';
 
 const _web = 'package:web';
+const _webDom = '$_web/src/dom/dom.dart';
 const _webHtml = '$_web/src/dom/html.dart';
 
 const _finch = 'package:finch';
@@ -10,6 +11,7 @@ const _finchAnnotations = '$_finch/src/annotations.dart';
 const _finchForms = '$_finch/src/forms.dart';
 const _finchLifecycle = '$_finch/src/lifecycle.dart';
 const _finchProvider = '$_finch/src/provider.dart';
+const _finchRenderScheduler = '$_finch/src/render_scheduler.dart';
 
 // dart:core
 const $Object = TypeChecker.fromUrl('$_dartCore#Object');
@@ -22,7 +24,8 @@ const $bool = TypeChecker.fromUrl('$_dartCore#bool');
 
 // package:finch
 const $Component = TypeChecker.fromUrl('$_finchAnnotations#Component');
-const $Observe = TypeChecker.fromUrl('$_finchAnnotations#Observe');
+const $Attribute = TypeChecker.fromUrl('$_finchAnnotations#Attribute');
+const $Property = TypeChecker.fromUrl('$_finchAnnotations#Property');
 const $Export = TypeChecker.fromUrl('$_finchAnnotations#Export');
 const $Module = TypeChecker.fromUrl('$_finchAnnotations#Module');
 
@@ -36,6 +39,9 @@ const $OnConnected = TypeChecker.fromUrl('$_finchLifecycle#OnConnected');
 const $OnDisconnected = TypeChecker.fromUrl('$_finchLifecycle#OnDisconnected');
 const $OnAttributeChanged = TypeChecker.fromUrl('$_finchLifecycle#OnAttributeChanged');
 const $OnAdopted = TypeChecker.fromUrl('$_finchLifecycle#OnAdopted');
+const $OnTemplateInit = TypeChecker.fromUrl('$_finchLifecycle#OnTemplateInit');
+const $OnFirstRender = TypeChecker.fromUrl('$_finchLifecycle#OnFirstRender');
+const $OnRender = TypeChecker.fromUrl('$_finchLifecycle#OnRender');
 
 const $Provider = TypeChecker.fromUrl('$_finchProvider#Provider');
 const $InstanceProvider = TypeChecker.fromUrl('$_finchProvider#InstanceProvider');
@@ -43,7 +49,10 @@ const $ClassProvider = TypeChecker.fromUrl('$_finchProvider#ClassProvider');
 const $FactoryProvider = TypeChecker.fromUrl('$_finchProvider#FactoryProvider');
 const $ProviderCollection = TypeChecker.fromUrl('$_finchProvider#ProviderCollection');
 
+const $RenderScheduler = TypeChecker.fromUrl('$_finchRenderScheduler#RenderScheduler');
+
 // package:web
+const $ShadowRoot = TypeChecker.fromUrl('$_webDom#ShadowRoot');
+
 const $HTMLElement = TypeChecker.fromUrl('$_webHtml#HTMLElement');
-const $ShadowRoot = TypeChecker.fromUrl('$_webHtml#ShadowRoot');
 const $ElementInternals = TypeChecker.fromUrl('$_webHtml#ElementInternals');
