@@ -1,5 +1,3 @@
-import 'provider.dart';
-
 /// Declares a class as a Finch component.
 final class Component {
   /// The custom element tag name.
@@ -83,7 +81,7 @@ final class Export {
   const Export([this.name]);
 }
 
-/// Declares a reusable collection of components, modules, and providers.
+/// Declares a collection of components and modules that can be defined all at once.
 /// 
 /// Must be applied to a class.
 final class Module {
@@ -97,15 +95,12 @@ final class Module {
   /// modules will always be defined before these components.
   final List<Type> components;
 
-  /// A list of providers that will be passed down to this module's
-  /// [components] and [imports] as a parent [ProviderCollection]. 
-  final List<Provider> providers;
-
-  /// Declare the annotated class to create a reusable collection of components,
-  /// modules, and providers.
+  /// Declare the annotated class as a collection of components and modules.
+  /// 
+  /// This will generate a `.finch.dart` function named `define{className}`, which when
+  /// called will define all list modules and components.
   const Module({
     this.imports = const [],
     this.components = const [],
-    this.providers = const [],
   });
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:example_app/test.dart';
 import 'package:finch/finch.dart';
+import 'package:http/browser_client.dart';
 import 'package:http/http.dart';
 import 'package:web/helpers.dart' hide Module, Client;
 
@@ -16,6 +17,9 @@ import 'main.finch.dart';
 abstract final class TestModule {}
 
 void main() {
+  ContextProvider(document)
+    .provide(makeTypedContext<Client>(BrowserClient()));
+
   defineTestModule();
 
   Future.delayed(const Duration(seconds: 1)).then((value) {

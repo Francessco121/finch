@@ -9,7 +9,6 @@ import 'component_models.dart';
 import 'context.dart';
 import 'exceptions.dart';
 import 'types.dart';
-import 'utils.dart';
 
 /// Generates backing code for a `@Component` annotated class [element].
 Future<void> generateCodeForComponent(ClassElement element, Component component, BuilderContext context) async {
@@ -407,6 +406,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     }
 
     if (hasOnRender) {
+      rerenderSb.writeln();
       rerenderSb.writeln('super.onRender();');
     }
 
@@ -453,6 +453,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
 
     if (callSuper) {
       method.annotations.add(CodeExpression(Code('override')));
+      methodSb.writeln();
       methodSb.writeln('super.onConnected();');
     }
 
@@ -480,9 +481,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   // Start building define method
   final sb = StringBuffer();
 
-  // Generate provider collection creation
-  sb.writeln('final ourProviders = providers ?? fn.ProviderCollection.empty();');
-
   // Generate element class creation
   sb.writeln('final ctor = fn.createCustomElementClass((element) {');
   
@@ -491,6 +489,8 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   if (styleField != null) {
     sb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
   }
+
+  sb.writeln();
 
   final hasElementInternalsParam = ctorParams.any((p) => $ElementInternals.isExactlyType(p.type));
   if (isFormComponent || hasElementInternalsParam) {
@@ -517,24 +517,17 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
       return null;
     } else if ($ElementInternals.isExactlyType(param.type)) {
       return 'internals';
-    } else if ($ProviderCollection.isExactlyType(param.type)) {
-      return 'ourProviders';
     } else if ($RenderScheduler.isExactlyType(param.type)) {
       // Handled by subclass
       return null;
     } else {
-      final prefix = context.addPrefixedImportFor(param.type.element!);
-      final prefixedType = PrefixedType(param.type.element!.name!, prefix);
-      final method = param.type.nullabilitySuffix == NullabilitySuffix.question 
-          ? 'resolveOrNull' 
-          : 'resolve';
-      
-      return 'ourProviders.$method<$prefixedType>()';
+      throw FinchBuilderException('Unsupported component constructor argument: ${param.type.element!.name!} ${param.name}');
     }
   }));
 
   sb.writeln('component = $subclassName(${ctorArgs.where((a) => a != null).join(', ')},);');
 
+  sb.writeln();
   sb.writeln('return component;');
 
   sb.writeln('}, fn.elementUpgraded);');
@@ -542,6 +535,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   if (hookedFunctions.any((f) => !f.isStatic) || 
       hookedProperties.any((f) => !f.isStatic) || 
       observedAttributes.isNotEmpty) {
+    sb.writeln();
     sb.writeln('final proto = js.getProperty(ctor, \'prototype\');');
   }
 
@@ -566,6 +560,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   }
 
   // Define custom element and register component
+  sb.writeln();
   sb.writeln('web.window.customElements.define(\'${component.tag}\', ctor);');
   sb.writeln('fn.registerComponent(${element.name}, \'${component.tag}\');');
 
@@ -573,10 +568,6 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   context.functions.add((MethodBuilder()
         ..name = 'define${element.name}'
         ..returns = Reference('void')
-        ..optionalParameters.add((ParameterBuilder()
-              ..name = 'providers'
-              ..type = Reference('fn.ProviderCollection?'))
-            .build())
         ..body = Code(sb.toString())
         ..docs.add('/// Defines the component [${element.name}] as the custom element `${component.tag}`.'))
       .build());

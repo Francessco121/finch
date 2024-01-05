@@ -4,7 +4,6 @@ import 'package:code_builder/code_builder.dart';
 import 'annotations.dart';
 import 'context.dart';
 import 'exceptions.dart';
-import 'provider_generator.dart';
 import 'types.dart';
 import 'utils.dart';
 
@@ -49,29 +48,12 @@ Future<void> generateCodeForModule(ClassElement element, Module module, BuilderC
 
   final sb = StringBuffer();
 
-  // Build provider collection
-  final String ourProvidersVar;
-  if (module.providers.isEmpty) {
-    // If no providers are defined, just pass the providers paramter on instead
-    // of building our own provider collection
-    ourProvidersVar = 'providers';
-  } else {
-    try {
-      ourProvidersVar = 'ourProviders';
-      generateCodeForProviderConstants(module.providers, sb, context,
-          variableName: 'ourProviders',
-          parentVariableName: 'providers');
-    } on FinchBuilderException catch (ex) {
-      throw FinchBuilderException.withElement(ex, element);
-    }
-  }
-
   // Define imported modules before components
   for (final module in imports) {
     if (module.prefix.isNotEmpty) {
       sb.write('${module.prefix}.');
     }
-    sb.writeln('define${module.type}($ourProvidersVar);');
+    sb.writeln('define${module.type}();');
   }
 
   sb.writeln();
@@ -81,17 +63,13 @@ Future<void> generateCodeForModule(ClassElement element, Module module, BuilderC
     if (component.prefix.isNotEmpty) {
       sb.write('${component.prefix}.');
     }
-    sb.writeln('define${component.type}($ourProvidersVar);');
+    sb.writeln('define${component.type}();');
   }
 
   // Build module define method
   context.functions.add((MethodBuilder()
         ..name = 'define${element.name}'
         ..returns = Reference('void')
-        ..optionalParameters.add((ParameterBuilder()
-              ..name = 'providers'
-              ..type = Reference('fn.ProviderCollection?'))
-            .build())
         ..body = Code(sb.toString())
         ..docs.add('/// Defines the module [${element.name}] along with all of its components and imported modules.'))
       .build());

@@ -5,6 +5,5 @@ library;
 
 export 'src/extensions.dart';
 export 'src/js_interop.dart';
-export 'src/provider.dart' show ProviderCollection, ProviderCollectionBuilder;
 export 'src/registry.dart';
 export 'src/render_scheduler.dart';

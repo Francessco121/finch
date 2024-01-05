@@ -5,6 +5,8 @@ import 'registry.dart';
 
 extension FinchElementExtensions on Element {
   /// Gets the Finch component instance associated with this custom element.
+  /// 
+  /// Throws a [NotAComponentException] if this element is not a Finch component.
   T component<T extends Object>() {
     final component = util.getProperty(this, '__#dartInstance');
     if (component == null) {
@@ -26,7 +28,9 @@ extension FinchElementExtensions on Element {
   Future<T> componentAsync<T extends Object>() {
     return componentRegistry.whenUpgraded<T>(this);
   }
+}
 
+extension FinchNodeExtensions on Node {
   /// Finds and returns the closest ancestor (or this element) that is a Finch component of type [T].
   /// 
   /// Returns null if no matching component was found.

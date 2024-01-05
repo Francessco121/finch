@@ -1,5 +1,6 @@
 import 'package:finch/finch.dart';
-import 'package:web/web.dart';
+import 'package:http/http.dart';
+import 'package:web/web.dart' hide Client;
 
 @Component(
   tag: 'parent-test',
@@ -13,8 +14,9 @@ class ParentTest implements OnTemplateInit, OnConnected, OnFirstRender, OnRender
   AudioConfiguration? someComplexProp;
 
   final ShadowRoot _shadow;
+  final HTMLElement _element;
 
-  ParentTest(this._shadow) {
+  ParentTest(this._shadow, this._element) {
     print('ParentTest:ctor');
   }
 
@@ -25,7 +27,8 @@ class ParentTest implements OnTemplateInit, OnConnected, OnFirstRender, OnRender
   
   @override
   void onConnected() {
-    print('ParentTest:onConnected');
+    final client = _element.getTypedContext<Client>();
+    print('ParentTest:onConnected -> client: $client');
   }
 
   @override

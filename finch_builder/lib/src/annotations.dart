@@ -1,7 +1,6 @@
 /// Finch annotations as parsed constants.
 library;
 
-import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:source_gen/source_gen.dart';
 
@@ -36,12 +35,10 @@ class Component {
 class Module {
   final List<DartType> imports;
   final List<DartType> components;
-  final List<DartObject> providers;
 
   const Module({
     required this.imports,
     required this.components,
-    required this.providers,
   });
 
   factory Module.fromReader(ConstantReader reader) {
@@ -56,7 +53,6 @@ class Module {
           .listValue
           .map((t) => t.toTypeValue()!)
           .toList(),
-      providers: reader.read('providers').listValue,
     );
   }
 }

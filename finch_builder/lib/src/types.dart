@@ -10,7 +10,6 @@ const _finch = 'package:finch';
 const _finchAnnotations = '$_finch/src/annotations.dart';
 const _finchForms = '$_finch/src/forms.dart';
 const _finchLifecycle = '$_finch/src/lifecycle.dart';
-const _finchProvider = '$_finch/src/provider.dart';
 const _finchRenderScheduler = '$_finch/src/render_scheduler.dart';
 
 // dart:core
@@ -42,12 +41,6 @@ const $OnAdopted = TypeChecker.fromUrl('$_finchLifecycle#OnAdopted');
 const $OnTemplateInit = TypeChecker.fromUrl('$_finchLifecycle#OnTemplateInit');
 const $OnFirstRender = TypeChecker.fromUrl('$_finchLifecycle#OnFirstRender');
 const $OnRender = TypeChecker.fromUrl('$_finchLifecycle#OnRender');
-
-const $Provider = TypeChecker.fromUrl('$_finchProvider#Provider');
-const $InstanceProvider = TypeChecker.fromUrl('$_finchProvider#InstanceProvider');
-const $ClassProvider = TypeChecker.fromUrl('$_finchProvider#ClassProvider');
-const $FactoryProvider = TypeChecker.fromUrl('$_finchProvider#FactoryProvider');
-const $ProviderCollection = TypeChecker.fromUrl('$_finchProvider#ProviderCollection');
 
 const $RenderScheduler = TypeChecker.fromUrl('$_finchRenderScheduler#RenderScheduler');
 
