@@ -1,6 +1,5 @@
 critical:
 - document component lifecycle in docs/
-- update readme docs to better represent current goals and show current annotations
 
 nice to haves:
 - component inheritance

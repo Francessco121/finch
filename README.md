@@ -1,6 +1,9 @@
 # Finch
 A Dart client-side web framework for creating web components. 
 
+> [!NOTE]
+> Finch is an experimental project and is entirely subject to change!
+
 Finch aims to make it easy to build rich web applications or component libraries based on web components without ever leaving Dart. At the same time, a primary goal of the project is to keep the code-base small enough that it could realistically be maintained by an individual, without sacrificing extensibility.
 
 Finch has two primary uses:
@@ -8,37 +11,51 @@ Finch has two primary uses:
 2. Create standard web components in Dart suitable for use in non-Dart projects.
 
 ## Example
-> [!NOTE]
-> Finch is still a work in progress!
-
 ```dart
 import 'package:finch/finch.dart';
 import 'package:web/web.dart';
 
+import 'main.finch.dart' as self;
+
 @Component(
   tag: 'my-component',
   template: '''
-    <p>Hello World!</p>
+    <p></p>
   ''',
-  style: '''
+  styles: ['''
     p {
       text-decoration: underline;
     }
-  '''
+  ''']
 )
-class MyComponent implements OnConnected {
+class MyComponent implements OnFirstRender, OnRender {
+  @Property()
+  String? message;
+
+  late final Element _para;
+
   final ShadowRoot _shadow;
 
   MyComponent(this._shadow);
-
+  
   @override
-  void onConnected() {
-    print('Hello world!');
-
-    _shadow
-      .querySelector('p')!
-      .setAttribute('style', 'color: red;');
+  void onFirstRender() {
+    _para = _shadow.querySelector('p')!;
   }
+  
+  @override
+  void onRender() {
+    _para.textContent = message;
+  }
+}
+
+void main() {
+  self.defineMyComponent();
+
+  final element = document.createElement('my-component');
+  document.body!.appendChild(element);
+
+  element.component<MyComponent>().message = 'Hello World!';
 }
 ```
 
