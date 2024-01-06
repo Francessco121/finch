@@ -10,26 +10,30 @@ final class Component {
   /// Cannot be combined with [templateUrl].
   final String? template;
   
-  /// A valid Dart import URL to an HTML file containing the initial HTML of the
-  /// component's shadow DOM.
+  /// A valid Dart import URL (absolute or relative) to an HTML file containing 
+  /// the initial HTML of the component's shadow DOM.
   /// 
   /// Cannot be combined with [template].
   final String? templateUrl;
 
   /// CSS to be added to the component's shadow DOM `adoptedStyleSheets` list.
-  final String? style;
+  /// 
+  /// These styles will be applied *after* those listed in [styleUrls].
+  final List<String> styles;
 
-  /// A valid Dart import URL to a CSS file containing a stylesheet to be added to the
-  /// component's shadow DOM `adoptedStyleSheets` list.
-  final String? styleUrl;
+  /// Valid Dart import URLs (absolute or relative) to a CSS files containing a 
+  /// stylesheet to be added to the component's shadow DOM `adoptedStyleSheets` list.
+  /// 
+  /// These styles will be applied *before* those listed in [styles].
+  final List<String> styleUrls;
 
   /// Declare a class as a Finch component and custom element with the given [tag].
   const Component({
     required this.tag, 
     this.template,
     this.templateUrl,
-    this.style,
-    this.styleUrl,
+    this.styles = const [],
+    this.styleUrls = const [],
   });
 }
 

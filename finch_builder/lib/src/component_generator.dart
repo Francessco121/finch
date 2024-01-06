@@ -9,6 +9,7 @@ import 'component_models.dart';
 import 'context.dart';
 import 'exceptions.dart';
 import 'types.dart';
+import 'utils.dart';
 
 /// Generates backing code for a `@Component` annotated class [element].
 Future<void> generateCodeForComponent(ClassElement element, Component component, BuilderContext context) async {
@@ -22,18 +23,14 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     throw FinchBuilderException('Cannot specify both a template and template URL.', element);
   }
 
-  if (component.style != null && component.styleUrl != null) {
-    throw FinchBuilderException('Cannot specify both a style and style URL.', element);
-  }
-
   final templateField = await _makeTemplateField(component, element, context.buildStep);
   if (templateField != null) {
     context.fields.add(templateField);
   }
 
-  final styleField = await _makeStyleField(component, element, context.buildStep);
-  if (styleField != null) {
-    context.fields.add(styleField);
+  final stylesField = await _makeStylesField(component, element, context.buildStep);
+  if (stylesField != null) {
+    context.fields.add(stylesField);
   }
 
   // Find component constructor
@@ -486,8 +483,8 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   
   sb.writeln('final shadow = element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
 
-  if (styleField != null) {
-    sb.writeln('shadow.adoptedStyleSheets = [${styleField.name}].jsify() as js.JSArray;');
+  if (stylesField != null) {
+    sb.writeln('shadow.adoptedStyleSheets = ${stylesField.name}.jsify() as js.JSArray;');
   }
 
   sb.writeln();
@@ -711,14 +708,16 @@ Future<Field?> _makeTemplateField(Component component, Element classElement, Bui
       html = await buildStep.readAsString(AssetId.resolve(
           Uri.parse(component.templateUrl!), from: buildStep.inputId));
     } on Exception catch (ex) {
-      if (ex is PackageNotFoundException || ex is AssetNotFoundException) {
-        throw FinchBuilderException('Could not find template at ${component.templateUrl}.', classElement);
+      if (ex is PackageNotFoundException) {
+        throw FinchBuilderException('Could not find template at ${component.templateUrl!} (package ${ex.name} not found).', classElement);
+      } else if (ex is AssetNotFoundException) {
+        throw FinchBuilderException('Could not find template at ${component.templateUrl!} (asset ${ex.assetId} not found).', classElement);
       } else {
         rethrow;
       }
     }
   } else if (component.template != null) {
-    html = component.template!.trim();
+    html = component.template!;
   } else {
     html = null;
   }
@@ -727,47 +726,54 @@ Future<Field?> _makeTemplateField(Component component, Element classElement, Bui
     return null;
   }
 
-  html = html
-      .replaceAll(r'$', r'\$')
-      .replaceAll(r"'''", r"\'''");
-
-  return (FieldBuilder()
-      ..name = '_template${classElement.name}'
-      ..modifier = FieldModifier.final$
-      ..assignment = Code('(web.document.createElement(\'template\') as web.HTMLTemplateElement)..innerHTML = \'\'\'$html\'\'\''))
-    .build();
+  return Field((f) => f
+    ..name = '_template${classElement.name}'
+    ..modifier = FieldModifier.final$
+    ..assignment = refer('web.document')
+        .property('createElement')
+        .call([literal('template')])
+        .asA(refer('web.HTMLTemplateElement'))
+        .cascade('innerHTML')
+        .assign(literalMultilineString(html!))
+        .code);
 }
 
-Future<Field?> _makeStyleField(Component component, Element classElement, BuildStep buildStep) async {
-  String? css;
-  if (component.styleUrl != null) {
+Future<Field?> _makeStylesField(Component component, Element classElement, BuildStep buildStep) async {
+  final sheets = <Expression>[];
+
+  for (final url in component.styleUrls) {
+    final String css;
     try {
       css = await buildStep.readAsString(AssetId.resolve(
-          Uri.parse(component.styleUrl!), from: buildStep.inputId));
+          Uri.parse(url), from: buildStep.inputId));
     } on Exception catch (ex) {
-      if (ex is PackageNotFoundException || ex is AssetNotFoundException) {
-        throw FinchBuilderException('Could not find stylesheet at ${component.styleUrl}.', classElement);
+      if (ex is PackageNotFoundException) {
+        throw FinchBuilderException('Could not find stylesheet at $url (package ${ex.name} not found).', classElement);
+      } else if (ex is AssetNotFoundException) {
+        throw FinchBuilderException('Could not find stylesheet at $url (asset ${ex.assetId} not found).', classElement);
       } else {
         rethrow;
       }
     }
-  } else if (component.style != null) {
-    css = component.style!.trim();
-  } else {
-    css = null;
+
+    sheets.add(literalMultilineString(css.trim()));
   }
 
-  if (css == null) {
+  for (final css in component.styles) {
+    sheets.add(literalMultilineString(css.trim()));
+  }
+
+  if (sheets.isEmpty) {
     return null;
   }
 
-  css = css
-      .replaceAll(r'$', r'\$')
-      .replaceAll(r"'''", r"\'''");
+  final cssSheets = sheets.map((css) =>
+      InvokeExpression.newOf(refer('web.CSSStyleSheet'), const [])
+          .cascade('replaceSync')
+          .call([css]));
 
-  return (FieldBuilder()
-      ..name = '_style${classElement.name}'
-      ..modifier = FieldModifier.final$
-      ..assignment = Code('web.CSSStyleSheet()..replaceSync(\'\'\'$css\'\'\')'))
-    .build();
+  return Field((f) => f
+    ..name = '_style${classElement.name}'
+    ..modifier = FieldModifier.final$
+    ..assignment = literalList(cssSheets).code);
 }

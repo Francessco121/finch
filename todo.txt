@@ -1,5 +1,14 @@
-- allow multiple stylesheets on a single component
+critical:
 - allow @Component to configure how the shadow dom is initialized
+- document component lifecycle in docs/
+- update readme docs to better represent current goals and show current annotations
+
+nice to haves:
 - component inheritance
-- Angular's @HostBinding and @HostListener annotations? (probably out of scope of the project)
-- Investigate supporting https://github.com/lume/element-behaviors as a way of getting Angular's directive feature back in some form
+- angular's @HostBinding and @HostListener annotations? (probably out of scope of the project)
+- investigate supporting https://github.com/lume/element-behaviors as a way of getting Angular's directive feature back in some form
+  - requires MutationObservers on each shadow root
+  - behavior lifecycle init can run on the initial parent render microtask and whenever after first render
+- consider making contexts compatible with the context proposal https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md
+  - allows us to get a stream for parent data, kinda cool
+- subscribing to contexts

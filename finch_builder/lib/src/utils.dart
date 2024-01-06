@@ -1,4 +1,5 @@
 import 'package:build/build.dart';
+import 'package:code_builder/code_builder.dart';
 
 /// Combines a type name with the "import as" prefix of its declaring library.
 class PrefixedType {
@@ -47,4 +48,13 @@ String getFinchPackageImport(String identifier) {
   }
 
   return 'package:${assetId.package}/$path';
+}
+
+/// Like [literalString] but creates a multiline string instead.
+Expression literalMultilineString(String contents) {
+  contents = contents
+      .replaceAll(r'$', r'\$')
+      .replaceAll(r"'''", r"\'''");
+
+  return CodeExpression(Code("'''$contents'''"));
 }

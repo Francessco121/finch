@@ -10,15 +10,15 @@ class Component {
   final String tag;
   final String? template;
   final String? templateUrl;
-  final String? style;
-  final String? styleUrl;
+  final List<String> styles;
+  final List<String> styleUrls;
 
   const Component({
     required this.tag,
     this.template,
     this.templateUrl,
-    this.style,
-    this.styleUrl,
+    this.styles = const [],
+    this.styleUrls = const [],
   });
 
   factory Component.fromReader(ConstantReader reader) {
@@ -26,8 +26,8 @@ class Component {
       tag: reader.read('tag').stringValue,
       template: reader.read('template').stringValueOrNull,
       templateUrl: reader.read('templateUrl').stringValueOrNull,
-      style: reader.read('style').stringValueOrNull,
-      styleUrl: reader.read('styleUrl').stringValueOrNull,
+      styles: reader.read('styles').listValue.map((e) => e.toStringValue()!).toList(),
+      styleUrls: reader.read('styleUrls').listValue.map((e) => e.toStringValue()!).toList(),
     );
   }
 }

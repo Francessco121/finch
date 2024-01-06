@@ -10,7 +10,7 @@ import 'src/exceptions.dart';
 import 'src/module_generator.dart';
 import 'src/types.dart';
 
-/// Returns a builder for `.finch.dart` librarys.
+/// Returns a builder for `.finch.dart` libraries.
 Builder finchBuilder(BuilderOptions options) {
   return sg.LibraryBuilder(FinchBuilder(), generatedExtension: '.finch.dart');
 }

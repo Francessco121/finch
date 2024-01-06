@@ -4,7 +4,13 @@ import 'package:web/web.dart' hide Client;
 
 @Component(
   tag: 'parent-test',
-  template: '<child-test>flash!</child-test>'
+  templateUrl: 'test.html',
+  styleUrls: ['test.css'],
+  styles: ['''
+    child-test {
+      font-weight: bold;
+    }
+  ''']
 )
 class ParentTest implements OnTemplateInit, OnConnected, OnFirstRender, OnRender {
   @Attribute('test-attr')

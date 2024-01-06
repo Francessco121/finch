@@ -1,6 +1,20 @@
 builders:
+  finch_html_builder:
+    import: "package:finch_builder/html_builder.dart"
+    builder_factories: ["htmlBuilder"]
+    build_extensions: {".finch.html": [".finch.html.dart"]}
+    auto_apply: dependents
+    build_to: cache
+    required_inputs: [".html"]
+  finch_css_builder:
+    import: "package:finch_builder/css_builder.dart"
+    builder_factories: ["cssBuilder"]
+    build_extensions: {".finch.css": [".finch.css.dart"]}
+    auto_apply: dependents
+    build_to: cache
+    required_inputs: [".css"]
   finch_builder:
-    import: "package:finch_builder/builder.dart"
+    import: "package:finch_builder/finch_builder.dart"
     builder_factories: ["finchBuilder"]
     build_extensions: {".dart": [".finch.dart"]}
     auto_apply: dependents
