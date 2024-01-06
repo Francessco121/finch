@@ -12,13 +12,19 @@ class Component {
   final String? templateUrl;
   final List<String> styles;
   final List<String> styleUrls;
+  final int shadowMode;
+  final bool shadowDelegatesFocus;
+  final int shadowSlotAssignment;
 
   const Component({
     required this.tag,
-    this.template,
-    this.templateUrl,
-    this.styles = const [],
-    this.styleUrls = const [],
+    required this.template,
+    required this.templateUrl,
+    required this.styles,
+    required this.styleUrls,
+    required this.shadowMode,
+    required this.shadowDelegatesFocus,
+    required this.shadowSlotAssignment,
   });
 
   factory Component.fromReader(ConstantReader reader) {
@@ -28,6 +34,9 @@ class Component {
       templateUrl: reader.read('templateUrl').stringValueOrNull,
       styles: reader.read('styles').listValue.map((e) => e.toStringValue()!).toList(),
       styleUrls: reader.read('styleUrls').listValue.map((e) => e.toStringValue()!).toList(),
+      shadowMode: reader.read('shadowMode').objectValue.getField('index')!.toIntValue()!,
+      shadowDelegatesFocus: reader.read('shadowDelegatesFocus').boolValue,
+      shadowSlotAssignment: reader.read('shadowSlotAssignment').objectValue.getField('index')!.toIntValue()!,
     );
   }
 }

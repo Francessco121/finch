@@ -1,5 +1,4 @@
 critical:
-- allow @Component to configure how the shadow dom is initialized
 - document component lifecycle in docs/
 - update readme docs to better represent current goals and show current annotations
 
@@ -12,3 +11,9 @@ nice to haves:
 - consider making contexts compatible with the context proposal https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md
   - allows us to get a stream for parent data, kinda cool
 - subscribing to contexts
+
+maintenance:
+- make better use of package:code_builder
+  - use builders correctly
+  - build expressions instead of string buffers and use References with a prefixing allocator to let code_builder handle
+    import as prefixes for us (we can remove the custom code we have now for it)

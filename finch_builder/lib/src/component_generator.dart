@@ -481,7 +481,7 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   // Generate element class creation
   sb.writeln('final ctor = fn.createCustomElementClass((element) {');
   
-  sb.writeln('final shadow = element.attachShadow(web.ShadowRootInit(mode: \'open\'));');
+  sb.writeln('final shadow = element.attachShadow(${_makeShadowRootInit(component)});');
 
   if (stylesField != null) {
     sb.writeln('shadow.adoptedStyleSheets = ${stylesField.name}.jsify() as js.JSArray;');
@@ -571,6 +571,14 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
   
   // Emit subclass
   context.classes.add(subclass.build());
+}
+
+String _makeShadowRootInit(Component component) {
+  final mode = component.shadowMode == 0 ? "'open'" : "'closed'";
+  final delegatesFocus = component.shadowDelegatesFocus ? 'true' : 'false';
+  final slotAssignment = component.shadowSlotAssignment == 0 ? "'named'" : "'manual'";
+
+  return 'web.ShadowRootInit(mode: $mode, delegatesFocus: $delegatesFocus, slotAssignment: $slotAssignment)';
 }
 
 Never _throwAttributeTypeException(Element element) {

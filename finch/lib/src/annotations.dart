@@ -27,6 +27,21 @@ final class Component {
   /// These styles will be applied *before* those listed in [styles].
   final List<String> styleUrls;
 
+  /// The encapsulation mode of the component's shadow root.
+  /// 
+  /// Defaults to open.
+  final ShadowMode shadowMode;
+
+  /// Whether the component's shadow root delegates focus.
+  /// 
+  /// Defaults to false.
+  final bool shadowDelegatesFocus;
+
+  /// The slot assignment mode of the component's shadow root.
+  /// 
+  /// Defaults to named.
+  final ShadowSlotAssignmentMode shadowSlotAssignment;
+
   /// Declare a class as a Finch component and custom element with the given [tag].
   const Component({
     required this.tag, 
@@ -34,7 +49,22 @@ final class Component {
     this.templateUrl,
     this.styles = const [],
     this.styleUrls = const [],
+    this.shadowMode = ShadowMode.open,
+    this.shadowDelegatesFocus = false,
+    this.shadowSlotAssignment = ShadowSlotAssignmentMode.named,
   });
+}
+
+/// The mode of a shadow root.
+enum ShadowMode {
+  open,
+  closed
+}
+
+/// The slot assignment mode of a shadow root.
+enum ShadowSlotAssignmentMode {
+  named,
+  manual
 }
 
 /// Declares an element attribute to be observed.
