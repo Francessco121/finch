@@ -29,7 +29,7 @@ class FinchBuilder extends sg.Generator {
 
     // Set up code emitter
     final emitter = DartEmitter(
-        allocator: Allocator(),
+        allocator: Allocator.simplePrefixing(),
         orderDirectives: true,
         useNullSafetySyntax: true);
 

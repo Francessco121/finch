@@ -50,6 +50,36 @@ String getFinchPackageImport(String identifier) {
   return 'package:${assetId.package}/$path';
 }
 
+/// Returns a package import string for the given library [identifier]'s `.finch.css` library.
+/// 
+/// Example: `package:some_package/library.finch.css.dart`.
+String getFinchCssPackageImport(String identifier, {AssetId? from}) {
+  var assetId = AssetId.resolve(Uri.parse(identifier), from: from);
+  assetId = assetId.changeExtension('.css.dart');
+
+  var path = assetId.path;
+  if (path.startsWith('lib/')) {
+    path = path.substring(4);
+  }
+
+  return 'package:${assetId.package}/$path';
+}
+
+/// Returns a package import string for the given library [identifier]'s `.finch.html` library.
+/// 
+/// Example: `package:some_package/library.finch.html.dart`.
+String getFinchHtmlPackageImport(String identifier, {AssetId? from}) {
+  var assetId = AssetId.resolve(Uri.parse(identifier), from: from);
+  assetId = assetId.changeExtension('.html.dart');
+
+  var path = assetId.path;
+  if (path.startsWith('lib/')) {
+    path = path.substring(4);
+  }
+
+  return 'package:${assetId.package}/$path';
+}
+
 /// Like [literalString] but creates a multiline string instead.
 Expression literalMultilineString(String contents) {
   contents = contents

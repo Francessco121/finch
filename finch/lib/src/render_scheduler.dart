@@ -51,7 +51,10 @@ final class _RenderScheduler implements RenderScheduler {
   void _microtaskCallback() {
     _scheduled = false;
     _runningCallback = true;
-    _callback();
-    _runningCallback = false;
+    try {
+      _callback();
+    } finally {
+      _runningCallback = false;
+    }
   }
 }

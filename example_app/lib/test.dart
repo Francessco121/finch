@@ -5,7 +5,7 @@ import 'package:web/web.dart' hide Client;
 @Component(
   tag: 'parent-test',
   templateUrl: 'test.html',
-  styleUrls: ['test.css'],
+  styleUrls: ['shared.finch.css', 'test.css'],
   styles: ['''
     child-test {
       font-weight: bold;

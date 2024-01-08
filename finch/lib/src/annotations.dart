@@ -1,4 +1,7 @@
+import 'package:meta/meta_meta.dart';
+
 /// Declares a class as a Finch component.
+@Target({TargetKind.classType})
 final class Component {
   /// The custom element tag name.
   /// 
@@ -23,6 +26,9 @@ final class Component {
 
   /// Valid Dart import URLs (absolute or relative) to a CSS files containing a 
   /// stylesheet to be added to the component's shadow DOM `adoptedStyleSheets` list.
+  /// 
+  /// CSS from these URLs will not be shared across components **unless** the URL
+  /// points to a `.finch.css` file.
   /// 
   /// These styles will be applied *before* those listed in [styles].
   final List<String> styleUrls;
@@ -70,6 +76,7 @@ enum ShadowSlotAssignmentMode {
 /// Declares an element attribute to be observed.
 /// 
 /// Only valid on instance fields/setters inside of a Finch component class.
+@Target({TargetKind.field, TargetKind.setter})
 final class Attribute {
   /// The name of the attribute to observe.
   /// 
@@ -88,6 +95,7 @@ final class Attribute {
 }
 
 /// Declares a field or setter as a reactive property.
+@Target({TargetKind.field, TargetKind.setter})
 final class Property {
   /// Declare a field or setter as a reactive property.
   /// 
@@ -98,6 +106,7 @@ final class Property {
 
 /// Declares a field, property, or method of a Finch component to be exported
 /// to the underlying JS class of its custom element.
+@Target({TargetKind.field, TargetKind.setter,  TargetKind.method})
 final class Export {
   /// The name of the field/property/method on the JS object.
   /// 
@@ -118,6 +127,7 @@ final class Export {
 /// Declares a collection of components and modules that can be defined all at once.
 /// 
 /// Must be applied to a class.
+@Target({TargetKind.classType})
 final class Module {
   /// A list of modules to be defined when this module is defined.
   /// Modules will be defined in the order they appear in this list. Components

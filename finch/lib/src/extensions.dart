@@ -28,6 +28,40 @@ extension FinchElementExtensions on Element {
   Future<T> componentAsync<T extends Object>() {
     return componentRegistry.whenUpgraded<T>(this);
   }
+
+  /// Toggles the attribute with the [qualifiedName] with the given [value].
+  /// 
+  /// If [force] is true, the attribute will always be added. If [force] is false,
+  /// the attribute will always be removed. If [force] is null, the attribute will
+  /// be added/remove depending on if it already exists.
+  /// 
+  /// If [value] is null, the attribute will be added but with no value (unless it
+  /// is being removed in which case this parameter is ignored).
+  /// 
+  /// Similar to [toggleAttribute].
+  void toggleAttributeValue(String qualifiedName, [bool? force, String? value]) {
+    if (force == false || (force == null && hasAttribute(qualifiedName))) {
+      removeAttribute(qualifiedName);
+    } else {
+      if (value == null) {
+        toggleAttribute(qualifiedName, true);
+      } else {
+        setAttribute(qualifiedName, value);
+      }
+    }
+  }
+
+  /// The same as [cloneNode] but returns the cloned element as an [Element] type instead of [Node]. 
+  Element cloneElement([bool deep = false]) {
+    return cloneNode(deep) as Element;
+  }
+}
+
+extension FinchDocumentFragmentExtensions on DocumentFragment {
+  /// The same as [cloneNode] but returns the cloned element as a [DocumentFragment] type instead of [Node]. 
+  DocumentFragment cloneFragment([bool deep = false]) {
+    return cloneNode(deep) as DocumentFragment;
+  }
 }
 
 extension FinchNodeExtensions on Node {

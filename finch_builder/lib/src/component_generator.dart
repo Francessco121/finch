@@ -23,12 +23,12 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
     throw FinchBuilderException('Cannot specify both a template and template URL.', element);
   }
 
-  final templateField = await _makeTemplateField(component, element, context.buildStep);
+  final templateField = await _makeTemplateField(component, element, context);
   if (templateField != null) {
     context.fields.add(templateField);
   }
 
-  final stylesField = await _makeStylesField(component, element, context.buildStep);
+  final stylesField = await _makeStylesField(component, element, context);
   if (stylesField != null) {
     context.fields.add(stylesField);
   }
@@ -709,79 +709,100 @@ void _hookProperties(Iterable<HookedProperty> props, String className, StringBuf
   }
 }
 
-Future<Field?> _makeTemplateField(Component component, Element classElement, BuildStep buildStep) async {
-  String? html;
+Future<Field?> _makeTemplateField(Component component, Element classElement, BuilderContext context) async {
+  Expression? template;
   if (component.templateUrl != null) {
-    try {
-      html = await buildStep.readAsString(AssetId.resolve(
-          Uri.parse(component.templateUrl!), from: buildStep.inputId));
-    } on Exception catch (ex) {
-      if (ex is PackageNotFoundException) {
-        throw FinchBuilderException('Could not find template at ${component.templateUrl!} (package ${ex.name} not found).', classElement);
-      } else if (ex is AssetNotFoundException) {
-        throw FinchBuilderException('Could not find template at ${component.templateUrl!} (asset ${ex.assetId} not found).', classElement);
-      } else {
-        rethrow;
+    if (component.templateUrl!.trimRight().toLowerCase().endsWith('.finch.html')) {
+      // Don't embed HTML from the URL if it's a .finch.html file. For these, we can share
+      // initial HTML across multiple components and just reference the template element
+      // from its '.finch.html.dart' file.
+      template = refer('template', getFinchHtmlPackageImport(component.templateUrl!, from: context.buildStep.inputId));
+    } else {
+      final String html;
+      try {
+        html = await context.buildStep.readAsString(AssetId.resolve(
+            Uri.parse(component.templateUrl!), from: context.buildStep.inputId));
+      } on Exception catch (ex) {
+        if (ex is PackageNotFoundException) {
+          throw FinchBuilderException('Could not find template at ${component.templateUrl!} (package ${ex.name} not found).', classElement);
+        } else if (ex is AssetNotFoundException) {
+          throw FinchBuilderException('Could not find template at ${component.templateUrl!} (asset ${ex.assetId} not found).', classElement);
+        } else {
+          rethrow;
+        }
       }
+
+      template = _templateElementExpr(html);
     }
   } else if (component.template != null) {
-    html = component.template!;
+    template = _templateElementExpr(component.template!);
   } else {
-    html = null;
+    template = null;
   }
 
-  if (html == null) {
+  if (template == null) {
     return null;
   }
 
   return Field((f) => f
     ..name = '_template${classElement.name}'
     ..modifier = FieldModifier.final$
-    ..assignment = refer('web.document')
-        .property('createElement')
-        .call([literal('template')])
-        .asA(refer('web.HTMLTemplateElement'))
-        .cascade('innerHTML')
-        .assign(literalMultilineString(html!))
-        .code);
+    ..assignment = template!.code);
 }
 
-Future<Field?> _makeStylesField(Component component, Element classElement, BuildStep buildStep) async {
+Expression _templateElementExpr(String html) {
+  return refer('web.document')
+      .property('createElement')
+      .call([literal('template')])
+      .asA(refer('web.HTMLTemplateElement'))
+      .cascade('innerHTML')
+      .assign(literalMultilineString(html));
+}
+
+Future<Field?> _makeStylesField(Component component, Element classElement, BuilderContext context) async {
   final sheets = <Expression>[];
 
   for (final url in component.styleUrls) {
-    final String css;
-    try {
-      css = await buildStep.readAsString(AssetId.resolve(
-          Uri.parse(url), from: buildStep.inputId));
-    } on Exception catch (ex) {
-      if (ex is PackageNotFoundException) {
-        throw FinchBuilderException('Could not find stylesheet at $url (package ${ex.name} not found).', classElement);
-      } else if (ex is AssetNotFoundException) {
-        throw FinchBuilderException('Could not find stylesheet at $url (asset ${ex.assetId} not found).', classElement);
-      } else {
-        rethrow;
+    if (url.trimRight().toLowerCase().endsWith('.finch.css')) {
+      // Don't embed CSS from the URL if it's a .finch.css file. For these, we can share
+      // CSS across multiple components and just reference the constructed stylesheet
+      // from its '.finch.css.dart' file.
+      sheets.add(refer('stylesheet', getFinchCssPackageImport(url, from: context.buildStep.inputId)));
+    } else {
+      final String css;
+      try {
+        css = await context.buildStep.readAsString(AssetId.resolve(
+            Uri.parse(url), from: context.buildStep.inputId));
+      } on Exception catch (ex) {
+        if (ex is PackageNotFoundException) {
+          throw FinchBuilderException('Could not find stylesheet at $url (package ${ex.name} not found).', classElement);
+        } else if (ex is AssetNotFoundException) {
+          throw FinchBuilderException('Could not find stylesheet at $url (asset ${ex.assetId} not found).', classElement);
+        } else {
+          rethrow;
+        }
       }
-    }
 
-    sheets.add(literalMultilineString(css.trim()));
+      sheets.add(_constructedStylesheetExpr(css));
+    }
   }
 
   for (final css in component.styles) {
-    sheets.add(literalMultilineString(css.trim()));
+    sheets.add(_constructedStylesheetExpr(css));
   }
 
   if (sheets.isEmpty) {
     return null;
   }
 
-  final cssSheets = sheets.map((css) =>
-      InvokeExpression.newOf(refer('web.CSSStyleSheet'), const [])
-          .cascade('replaceSync')
-          .call([css]));
-
   return Field((f) => f
     ..name = '_style${classElement.name}'
     ..modifier = FieldModifier.final$
-    ..assignment = literalList(cssSheets).code);
+    ..assignment = literalList(sheets).code);
+}
+
+Expression _constructedStylesheetExpr(String css) {
+  return InvokeExpression.newOf(refer('web.CSSStyleSheet'), const [])
+      .cascade('replaceSync')
+      .call([literalMultilineString(css.trim())]);
 }
