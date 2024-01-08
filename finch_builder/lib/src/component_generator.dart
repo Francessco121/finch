@@ -469,8 +469,10 @@ Future<void> generateCodeForComponent(ClassElement element, Component component,
           .build())
         ..annotations.add(CodeExpression(Code('override')))
         ..body = Code('''
+          if (value != super.${prop.field}) {
+            _rs.scheduleRender();
+          }
           super.${prop.field} = value;
-          _rs.scheduleRender();
         '''))
       .build());
   }
